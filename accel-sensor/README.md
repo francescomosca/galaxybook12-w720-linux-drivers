@@ -1,7 +1,5 @@
 # Accelerometer & Auto-Rotation Driver (Samsung Galaxy Book 12)
 
-[🇮🇹 **Leggi in Italiano**](README_IT.md)
-
 Native kernel module and udev calibration for the embedded **STMicroelectronics K2HH / LIS2HH12** accelerometer (ACPI ID `SAM0201`) on Samsung Galaxy Book 12 (SM-W720), providing natural screen orientation for Linux desktops (KDE Plasma Wayland, GNOME, etc.).
 
 ---
