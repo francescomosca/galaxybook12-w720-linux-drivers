@@ -1,7 +1,5 @@
 # Screen Brightness & AMOLED Color Profiles (Samsung Galaxy Book 12)
 
-[🇮🇹 **Leggi in Italiano**](README_IT.md)
-
 Native hardware control for the Samsung Galaxy Book 12 (SM-W720) AMOLED panel via DisplayPort AUX channel (DP-AUX) and graphical/CLI color profile switcher.
 
 ---

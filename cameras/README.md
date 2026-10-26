@@ -1,7 +1,5 @@
 # Dual Camera Drivers for Samsung Galaxy Book 12 (SM-W720)
 
-[🇮🇹 **Leggi in Italiano**](README_IT.md)
-
 Complete package containing patched kernel modules, calibration profiles, and configurations to enable **both cameras (Rear Sony IMX258 and Front Sony IMX241)** on Samsung Galaxy Book 12 running modern Linux kernels (6.x / 7.x).
 
 ---

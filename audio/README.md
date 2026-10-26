@@ -1,7 +1,5 @@
 # Realtek ALC298 Audio Initializer (Samsung Galaxy Book 12)
 
-[🇮🇹 **Leggi in Italiano**](README_IT.md)
-
 High-speed native C initialization utility for the Realtek ALC298 audio codec on Samsung Galaxy Book 12 (SM-W720).
 
 Resolves the hardware issue where internal amplifiers and stereo speakers remain silent after system boot or after resuming from sleep/suspend.
