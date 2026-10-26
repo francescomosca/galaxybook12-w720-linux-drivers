@@ -1,0 +1,169 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <errno.h>
+
+struct hda_verb_ioctl {
+    uint32_t verb;
+    uint32_t res;
+};
+
+#define HDA_IOCTL_VERB_WRITE _IOWR('H', 0x11, struct hda_verb_ioctl)
+#define HDA_VERB(nid, verb, param) (((nid & 0xff) << 24) | ((verb & 0xfff) << 8) | (param & 0xff))
+
+static int fd = -1;
+
+static uint32_t exec_verb(uint32_t nid, uint32_t verb, uint32_t param) {
+    struct hda_verb_ioctl val;
+    val.verb = HDA_VERB(nid, verb, param);
+    val.res = 0;
+    if (ioctl(fd, HDA_IOCTL_VERB_WRITE, &val) < 0) {
+        perror("ioctl HDA_IOCTL_VERB_WRITE");
+        return 0;
+    }
+    return val.res;
+}
+
+static void set_coef(uint32_t reg, uint32_t val) {
+    exec_verb(0x20, 0x500 | ((reg >> 8) & 0xff), reg & 0xff);
+    exec_verb(0x20, 0x400 | ((val >> 8) & 0xff), val & 0xff);
+}
+
+static uint32_t get_coef(uint32_t reg) {
+    exec_verb(0x20, 0x500 | ((reg >> 8) & 0xff), reg & 0xff);
+    return exec_verb(0x20, 0xc00, 0x0);
+}
+
+static void update_coef(uint32_t reg, uint32_t orMask, uint32_t notAndMask) {
+    uint32_t val = get_coef(reg);
+    set_coef(reg, (val | orMask) & ~notAndMask);
+}
+
+static int check_coef(uint32_t reg, uint32_t val) {
+    uint32_t ret = get_coef(reg);
+    if (ret != val) {
+        fprintf(stderr, "Value for reg 0x%X is not 0x%X but 0x%X\n", reg, val, ret);
+        return 0;
+    }
+    return 1;
+}
+
+static void init_amp_params(uint32_t reg23, uint32_t reg25, int set_reg22, uint32_t reg22) {
+    for (int i = 0; i < 8; i++) {
+        exec_verb(0x0, 0xf00, 0x0);
+    }
+    exec_verb(0x6, 0x73e, 0x80);
+    update_coef(0x26, 0x4000, 0x0);
+    if (set_reg22) {
+        set_coef(0x22, reg22);
+    }
+    set_coef(0x23, reg23);
+    set_coef(0x25, reg25);
+
+    set_coef(0x26, 0xb010);
+    for (int i = 0; i < 8; i++) {
+        exec_verb(0x0, 0xf00, 0x0);
+    }
+    exec_verb(0x6, 0x73e, 0x00);
+    update_coef(0x26, 0x0, 0x10);
+    check_coef(0x26, 0xb000);
+}
+
+struct reg_pair {
+    uint32_t reg;
+    uint32_t val;
+};
+
+static void set_regs(const struct reg_pair *values, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        while (get_coef(0x26) & 0x4000) {
+            usleep(1000);
+        }
+        set_coef(0x23, values[i].reg);
+        set_coef(0x24, 0x0);
+        set_coef(0x25, values[i].val);
+        set_coef(0x26, 0xb013);
+    }
+}
+
+int main(int argc, char *argv[]) {
+    const char *device = "/dev/snd/hwC0D0";
+    if (argc > 1) {
+        device = argv[1];
+    }
+
+    /* All'avvio il dispositivo puo' richiedere qualche secondo prima di comparire in /dev/snd */
+    int retries = 30;
+    while (retries > 0) {
+        fd = open(device, O_RDWR);
+        if (fd >= 0) {
+            break;
+        }
+        usleep(500000); /* 500ms */
+        retries--;
+    }
+
+    if (fd < 0) {
+        perror("Failed to open hwdep device");
+        return 1;
+    }
+
+    if ((get_coef(0x26) & 0x3000) == 0) {
+        set_coef(0x26, get_coef(0x26) | 0x3000);
+    }
+
+    const struct reg_pair tableSet2_1[] = {
+        {0xb, 0x0}, {0xc, 0x0}, {0xd, 0x0}, {0x1a, 0x0}, {0x1b, 0x82},
+        {0x1c, 0x0}, {0x1d, 0x0}, {0x1e, 0x0}, {0x1f, 0x0}, {0x20, 0xe2},
+        {0x21, 0xc0}, {0x22, 0x20}, {0x23, 0x22}, {0x24, 0x0}, {0x26, 0x0},
+        {0x27, 0xff}, {0x28, 0xff}, {0x29, 0xff}, {0x2a, 0xfc}, {0x2b, 0x2},
+        {0x2c, 0x48}, {0x2d, 0x14}, {0x2e, 0x2}, {0x2f, 0x0}, {0x30, 0x0},
+        {0x31, 0x0}, {0x32, 0x0}, {0x33, 0x0}, {0x34, 0x0}, {0x35, 0x1},
+        {0x36, 0x93}, {0x37, 0x0}, {0x38, 0x80}, {0x39, 0x0}, {0x3a, 0xf0}
+    };
+
+    const struct reg_pair tableSet2_2[] = {
+        {0xb, 0x0}, {0xc, 0x0}, {0xd, 0x0}, {0x1a, 0x0}, {0x1b, 0x82},
+        {0x1c, 0x0}, {0x1d, 0x0}, {0x1e, 0x0}, {0x1f, 0x0}, {0x20, 0xe2},
+        {0x21, 0xc0}, {0x22, 0x20}, {0x23, 0x22}, {0x24, 0x4}, {0x26, 0x0},
+        {0x27, 0xff}, {0x28, 0xff}, {0x29, 0xff}, {0x2a, 0xcf}, {0x2b, 0x2},
+        {0x2c, 0x48}, {0x2d, 0x34}, {0x2e, 0x2}, {0x2f, 0x0}, {0x30, 0x0},
+        {0x31, 0x0}, {0x32, 0x0}, {0x33, 0x0}, {0x34, 0x0}, {0x35, 0x1},
+        {0x36, 0x93}, {0x37, 0x0}, {0x38, 0x80}, {0x39, 0x0}, {0x3a, 0xf0}
+    };
+
+    size_t count1 = sizeof(tableSet2_1) / sizeof(tableSet2_1[0]);
+    for (size_t i = 0; i < count1; i++) {
+        init_amp_params(tableSet2_1[i].reg, tableSet2_1[i].val, (i == 0), 0x31);
+    }
+
+    size_t count2 = sizeof(tableSet2_2) / sizeof(tableSet2_2[0]);
+    for (size_t i = 0; i < count2; i++) {
+        init_amp_params(tableSet2_2[i].reg, tableSet2_2[i].val, (i == 0), 0x34);
+    }
+
+    set_coef(0x22, 0x1b);
+
+    const struct reg_pair tableSet3[] = {
+        {0x0c0, 0x2a86}, {0x0c1, 0xcaaa}, {0x0fa, 0x0001}, {0x01c, 0xafaf},
+        {0x073, 0x0000}, {0x074, 0x8000}, {0x0a0, 0x0000}, {0x070, 0x8020},
+        {0x071, 0x1020}, {0x080, 0x0000}, {0x0fa, 0x0001}, {0x02a, 0x2a8a},
+        {0x061, 0xa100}, {0x062, 0x8400}, {0x026, 0x8080}, {0x02f, 0x0000},
+        {0x085, 0x5000}, {0x01c, 0x2f2f}, {0x190, 0x8430}, {0x190, 0x8431},
+        {0x194, 0x0240}, {0x196, 0x3000}, {0x07a, 0x0400}, {0x063, 0xa23e},
+        {0x063, 0xf23e}, {0x111, 0xa602}, {0x08e, 0x0068}, {0x125, 0x0110},
+        {0x091, 0x0e26}, {0x125, 0x0410}, {0x13a, 0x3030}, {0x1db, 0x0003},
+        {0x161, 0x0041}, {0x162, 0x040c}, {0x160, 0xceff}, {0x003, 0xc000},
+        {0x198, 0x0000}
+    };
+
+    size_t count3 = sizeof(tableSet3) / sizeof(tableSet3[0]);
+    set_regs(tableSet3, count3);
+
+    close(fd);
+    printf("ALC298 initialized successfully.\n");
+    return 0;
+}

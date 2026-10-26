@@ -1,0 +1,23 @@
+# Build artifacts and compiled objects
+*.o
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+*.order
+*.symvers
+.tmp_versions/
+.cache.mk
+*.cmd
+.*.cmd
+.module-common.o
+
+# Binaries
+/audio/src/alc298_init
+/screen/src/brightness
+
+# Temporary and editor files
+*~
+*.swp
+*.bak
+.DS_Store

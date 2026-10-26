@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -e
+
+CONFIG_FILE="/etc/galaxybook-colorprofile.conf"
+[ -f "$CONFIG_FILE" ] || echo "3" > "$CONFIG_FILE" 2>/dev/null || true
+CURRENT_PROFILE=$(cat "$CONFIG_FILE" 2>/dev/null || echo "3")
+
+# If profile passed as command line argument
+if [ -n "$1" ]; then
+    CHOSEN="$1"
+elif command -v kdialog >/dev/null 2>&1; then
+    # Native KDE dialog (kdialog)
+    CHOSEN=$(kdialog --title "AMOLED Screen Color Profile" \
+                     --radiolist "Select AMOLED panel color profile:" \
+                     "0" "Basic (Standard / Natural)" $([ "$CURRENT_PROFILE" = "0" ] && echo "on" || echo "off") \
+                     "1" "AMOLED Cinema (High contrast for movies)" $([ "$CURRENT_PROFILE" = "1" ] && echo "on" || echo "off") \
+                     "2" "AMOLED Photo (Calibrated for photography)" $([ "$CURRENT_PROFILE" = "2" ] && echo "on" || echo "off") \
+                     "3" "Adaptive (Samsung Default)" $([ "$CURRENT_PROFILE" = "3" ] && echo "on" || echo "off") \
+                     "4" "Advanced 4 (Custom)" $([ "$CURRENT_PROFILE" = "4" ] && echo "on" || echo "off") \
+                     "5" "Advanced 5 (Custom)" $([ "$CURRENT_PROFILE" = "5" ] && echo "on" || echo "off") \
+                     "6" "Advanced 6 (Custom)" $([ "$CURRENT_PROFILE" = "6" ] && echo "on" || echo "off"))
+elif command -v zenity >/dev/null 2>&1; then
+    # GTK / GNOME fallback dialog (zenity)
+    CHOSEN=$(zenity --list --radiolist \
+                    --title="AMOLED Screen Color Profile" \
+                    --text="Select AMOLED panel color profile:" \
+                    --column="" --column="ID" --column="Profile" \
+                    $([ "$CURRENT_PROFILE" = "0" ] && echo "TRUE" || echo "FALSE") "0" "Basic (Standard / Natural)" \
+                    $([ "$CURRENT_PROFILE" = "1" ] && echo "TRUE" || echo "FALSE") "1" "AMOLED Cinema" \
+                    $([ "$CURRENT_PROFILE" = "2" ] && echo "TRUE" || echo "FALSE") "2" "AMOLED Photo" \
+                    $([ "$CURRENT_PROFILE" = "3" ] && echo "TRUE" || echo "FALSE") "3" "Adaptive (Samsung Default)" \
+                    $([ "$CURRENT_PROFILE" = "4" ] && echo "TRUE" || echo "FALSE") "4" "Advanced 4" \
+                    $([ "$CURRENT_PROFILE" = "5" ] && echo "TRUE" || echo "FALSE") "5" "Advanced 5" \
+                    $([ "$CURRENT_PROFILE" = "6" ] && echo "TRUE" || echo "FALSE") "6" "Advanced 6" \
+                    --hide-column=2 --print-column=2 2>/dev/null)
+else
+    echo "No GUI dialog found (neither kdialog nor zenity is installed)."
+    echo "CLI usage: galaxybook-colorprofile <0-6>"
+    exit 1
+fi
+
+if [ -z "$CHOSEN" ]; then
+    exit 0
+fi
+
+echo "$CHOSEN" > "$CONFIG_FILE"
+sudo systemctl restart galaxybook-brightness.service
+
+# Desktop notification (kdialog or notify-send)
+if command -v kdialog >/dev/null 2>&1; then
+    kdialog --passivepopup "AMOLED profile set to: $CHOSEN" 3
+elif command -v notify-send >/dev/null 2>&1; then
+    notify-send "Samsung Galaxy Book 12" "AMOLED profile set to: $CHOSEN"
+fi

@@ -1,0 +1,12 @@
+[Unit]
+Description=Samsung Galaxy Book 12 OLED Brightness Daemon
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/galaxybook-brightness-wrapper.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=graphical.target

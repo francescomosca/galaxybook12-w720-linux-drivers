@@ -1,0 +1,2 @@
+sensor:modalias:acpi:SAM0201*:dmi:*:svnSAMSUNGELECTRONICSCO.,LTD.:pnGalaxyBook12:*
+ ACCEL_MOUNT_MATRIX=0, -1, 0; -1, 0, 0; 0, 0, -1
