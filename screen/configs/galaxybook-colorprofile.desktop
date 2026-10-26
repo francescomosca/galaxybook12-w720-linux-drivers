@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=AMOLED Color Profile
+Comment=Select AMOLED screen color profile for Samsung Galaxy Book 12
+Exec=/usr/local/bin/galaxybook-colorprofile
+Icon=preferences-desktop-display-color
+Terminal=false
+Type=Application
+Categories=Settings;HardwareSettings;
+Keywords=oled;amoled;display;color;brightness;samsung;

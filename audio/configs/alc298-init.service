@@ -1,0 +1,12 @@
+[Unit]
+Description=Samsung Galaxy Book 12 ALC298 Audio Amplifier Initializer
+After=sound.target multi-user.target
+Wants=sound.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/alc298_init
+RemainAfterExit=yes
+
+[Install]
+WantedBy=graphical.target

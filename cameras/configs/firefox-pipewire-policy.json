@@ -1,0 +1,10 @@
+{
+  "policies": {
+    "Preferences": {
+      "media.webrtc.camera.allow-pipewire": {
+        "Value": true,
+        "Status": "locked"
+      }
+    }
+  }
+}

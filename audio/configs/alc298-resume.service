@@ -1,0 +1,10 @@
+[Unit]
+Description=Re-initialize ALC298 amplifier after suspend/resume
+After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/alc298_init
+
+[Install]
+WantedBy=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
