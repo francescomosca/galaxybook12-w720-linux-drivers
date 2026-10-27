@@ -21,6 +21,8 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <time.h>
+#include <poll.h>
+#include <libudev.h>
 #include "brightness.h"
 #include "dpAux.h"
 
@@ -28,12 +30,14 @@
 #define BACKLIGHT_PATH "/sys/class/backlight/intel_backlight"
 #define BRIGHTNESS_PATH BACKLIGHT_PATH "/brightness"
 #define MAX_BRIGHTNESS_PATH BACKLIGHT_PATH "/max_brightness"
+#define EDP_DPMS_PATH "/sys/class/drm/card1-eDP-1/dpms"
 
 struct {
     pthread_mutex_t         lock;
     displayBrightness_t*    dp;
     aux_t                   aux;
     int                     maxBrightness;
+    int                     colorProfile;
 } sigData;
 
 /*
@@ -55,34 +59,54 @@ def handler(aux, displayInfo, cc5State, maxBrightness):
         LOCK.release()
 */
 
-void sigIOHandler(int)
+void applyBrightnessAndColorProfile(int forceReopen)
 {
     FILE *handle;
 
-    // Try to get the mutex
-    if (pthread_mutex_trylock(&sigData.lock) != 0)
+    if (pthread_mutex_lock(&sigData.lock) != 0)
         return;
 
-    // Get the current brightness
     if ((handle = fopen(BRIGHTNESS_PATH, "r")) != NULL) {
         char buffer[256];
         int brightness;
 
-        // Read the current brightness
         fgets((char *)&buffer, sizeof(buffer), handle);
         fclose(handle);
         brightness = strtol((char *)&buffer, (char **)NULL, 10);
 
-        // Reopen the AUX device (in case of leaving power sleep mode)
-        dpAuxClose(sigData.aux);
-        sigData.aux = dpAuxOpen(AUX_PATH);
+        if (forceReopen) {
+            dpAuxClose(sigData.aux);
+            sigData.aux = dpAuxOpen(AUX_PATH);
+        }
         accessParaAuxRegs(sigData.aux);
 
-        // Set the new brightness
         setBrightness(sigData.aux, sigData.dp, 
             brightness * 101 / sigData.maxBrightness);
+        setColorProfile(sigData.aux, sigData.dp, sigData.colorProfile);
     }
     pthread_mutex_unlock(&sigData.lock);
+}
+
+void sigIOHandler(int sig)
+{
+    (void)sig;
+    applyBrightnessAndColorProfile(1);
+}
+
+static int isScreenOn(void)
+{
+    FILE *f = fopen(EDP_DPMS_PATH, "r");
+    if (!f)
+        return 1;
+    char buf[32];
+    if (fgets(buf, sizeof(buf), f) != NULL) {
+        fclose(f);
+        if (strncmp(buf, "On", 2) == 0)
+            return 1;
+        return 0;
+    }
+    fclose(f);
+    return 1;
 }
 
 void watch(aux_t aux, displayBrightness_t *dp, int colorProfile)
@@ -90,8 +114,11 @@ void watch(aux_t aux, displayBrightness_t *dp, int colorProfile)
     int fd, maxBrightness;
     time_t lastTS, newTS;
     char buffer[256];
-    size_t size;
     FILE *handle;
+    struct udev *udev = NULL;
+    struct udev_monitor *mon = NULL;
+    int udev_fd = -1;
+    int wasScreenOn = 1;
 
     // Get the maximum brightness value
     if ((handle = fopen(MAX_BRIGHTNESS_PATH, "r")) == NULL) {
@@ -106,13 +133,13 @@ void watch(aux_t aux, displayBrightness_t *dp, int colorProfile)
     sigData.dp = dp;
     sigData.aux = aux;
     sigData.maxBrightness = strtol((char *)&buffer, (char **)NULL, 10);
+    sigData.colorProfile = colorProfile;
 
     // Set the signal handler
     signal(SIGIO, sigIOHandler);
 
-    // Set the brightness
-    sigIOHandler(0);
-    setColorProfile(aux, dp, colorProfile);
+    // Set initial brightness and color profile
+    applyBrightnessAndColorProfile(1);
 
     // Open the /sys brightness directory in order to check changes
     if ((fd = open(BACKLIGHT_PATH, O_RDONLY)) == -1) {
@@ -126,22 +153,74 @@ void watch(aux_t aux, displayBrightness_t *dp, int colorProfile)
         return;
     }
 
+    // Set up udev monitor for DRM display events (screen turn on / modeset / resume)
+    udev = udev_new();
+    if (udev) {
+        mon = udev_monitor_new_from_netlink(udev, "udev");
+        if (mon) {
+            udev_monitor_filter_add_match_subsystem_devtype(mon, "drm", NULL);
+            udev_monitor_enable_receiving(mon);
+            udev_fd = udev_monitor_get_fd(mon);
+        }
+    }
+
+    wasScreenOn = isScreenOn();
     lastTS = time(NULL);
+
     while (1) {
-        sleep(2);
+        struct pollfd pfd;
+        int pollRet = 0;
+
+        if (udev_fd >= 0) {
+            pfd.fd = udev_fd;
+            pfd.events = POLLIN;
+            // Poll for up to 1500ms
+            pollRet = poll(&pfd, 1, 1500);
+        } else {
+            sleep(2);
+        }
+
         newTS = time(NULL);
-        /*
-         * This hacks in order to set back the previous brightness configuration
-         * after the computer come back from power sleep state.
-         */
+
+        // 1. Detect resume from system suspend (time jump)
         if (newTS - lastTS > 4) {
-            // Reset the current brightness
-            sigIOHandler(0);
-            // Reset the current color profile
-            setColorProfile(aux, dp, colorProfile);
+            usleep(200000); // 200ms grace period for DP-AUX hardware ready
+            applyBrightnessAndColorProfile(1);
         }
         lastTS = newTS;
+
+        // 2. Detect DRM udev events (e.g. DPMS On/Off or modeset)
+        if (pollRet > 0 && (pfd.revents & POLLIN)) {
+            struct udev_device *dev;
+            int drmEvent = 0;
+            while ((dev = udev_monitor_receive_device(mon)) != NULL) {
+                drmEvent = 1;
+                udev_device_unref(dev);
+            }
+            if (drmEvent) {
+                int currentlyOn = isScreenOn();
+                if (currentlyOn) {
+                    usleep(150000); // Wait 150ms for AMOLED panel to power up
+                    applyBrightnessAndColorProfile(1);
+                }
+                wasScreenOn = currentlyOn;
+            }
+        }
+
+        // 3. Periodic DPMS state transition check (fallback)
+        int currentScreenState = isScreenOn();
+        if (!wasScreenOn && currentScreenState) {
+            // Screen was off and is now turned back on
+            usleep(150000);
+            applyBrightnessAndColorProfile(1);
+        }
+        wasScreenOn = currentScreenState;
     }
+
+    if (mon)
+        udev_monitor_unref(mon);
+    if (udev)
+        udev_unref(udev);
 }
 
 int main(int argc, char** argv)
