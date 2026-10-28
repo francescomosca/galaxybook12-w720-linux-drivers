@@ -794,6 +794,7 @@ dpWrite_t setBrightnessRegA[] = {
     {0x491, 3, {9, 0xF0, 0xEF}},
     {0x492, 2, {0xF9, 0xFF, 0}},
     {0x492, 2, {0xF8, 0x19, 0}},
+    {0, 0, {0, 0, 0}},
 };
 
 dpWrite_t setBrightnessRegB[] = {
@@ -807,6 +808,7 @@ dpWrite_t setBrightnessRegB[] = {
     {0x492, 2, {0x16, 0x0F, 0}},
     {0x492, 2, {0x17, 0x0F, 0}},
     {0x492, 2, {0x18, 0x0F, 0}},
+    {0, 0, {0, 0, 0}},
 };
 
 dpWrite_t setBrightnessRegC[] = {
@@ -819,6 +821,7 @@ dpWrite_t setBrightnessRegC[] = {
     {0x491, 3, {0x0E, 0x80, 0x90}},
     {0x491, 3, {0x02, 0x7F, 0x01}},
     {0x491, 3, {0x07, 0xFF, 0x04}},
+    {0, 0, {0, 0, 0}},
 };
 
 dpWrite_t setBrightnessRegC_lowMode[] = {
@@ -828,6 +831,7 @@ dpWrite_t setBrightnessRegC_lowMode[] = {
     {0x491, 3, {0x0E, 0x80, 0x90}},
     {0x491, 3, {0x02, 0x7F, 0x01}},
     {0x491, 3, {0x07, 0xFF, 0x04}},
+    {0, 0, {0, 0, 0}},
 };
 
 dpWrite_t setBrightnessRegD[] = {
@@ -864,6 +868,7 @@ dpWrite_t setBrightnessRegD[] = {
     {0x492, 2, {0x2E, 0x0, 0}},
     {0x492, 2, {0x2F, 0x0, 0}},
     {0x492, 2, {0x30, 0x0, 0}},
+    {0, 0, {0, 0, 0}},
 };
 
 dpWrite_t setBrightnessRegE[] = {
@@ -872,6 +877,7 @@ dpWrite_t setBrightnessRegE[] = {
     {0x492, 2, {0x33, 0x08, 0}},
     {0x491, 3, {0x02, 0x7F, 0x1}},
     {0x491, 3, {0x07, 0xFF, 0x4}},
+    {0, 0, {0, 0, 0}},
 };
 
 dpWrite_t setColorProfileReg[] = {
@@ -993,6 +999,7 @@ dpWrite_t setColorProfileReg[] = {
     {0x492, 2, {0x73, 0, 0}},
     {0x492, 2, {0x74, 0, 0}},
     {0x492, 2, {0x75, 0, 0}},
+    {0, 0, {0, 0, 0}},
 };
 
 int ptrIntoChannelAdjustmentTable[] = {
