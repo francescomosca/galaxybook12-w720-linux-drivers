@@ -40,13 +40,14 @@ int accessParaAuxRegs(aux_t aux)
     const char *cmd="PARAAUX-REG";
 
     for (int i=0; i < 5; i++) {
-        char res;
+        unsigned char res;
 
-        for (int i=0; cmd[i]; i++)
-            dpAuxWrite(aux, 0x490, cmd[i]);
-        res = dpAuxRead(aux, 0x490);
+        for (int j=0; cmd[j]; j++)
+            dpAuxWrite(aux, 0x490, cmd[j]);
+        res = (unsigned char)dpAuxRead(aux, 0x490);
         if (res > 0)
             return 0;
+        usleep(10000);
     }
     return 1;
 }
@@ -461,7 +462,10 @@ displayBrightness_t* initBrightness(aux_t aux, int highBrightnessMode)
     return dp;
 }
 
-dpWrite_t __setBrightnessCmd[] = {{0x492, 2, {0x32, 1, 0}}};
+dpWrite_t __setBrightnessCmd[] = {
+    {0x492, 2, {0x32, 1, 0}},
+    {0, 0, {0, 0, 0}},
+};
 void setBrightness(aux_t aux, displayBrightness_t *dp, char brightness)
 {
     int ptr;

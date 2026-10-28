@@ -24,36 +24,48 @@ aux_t dpAuxOpen(const char *path)
     int fd;
    
     if ((fd = open(path, O_RDWR)) == -1)
-        return 0;
+        return -1;
     return fd;
 }
 
 char dpAuxRead(aux_t aux, int addr)
 {
-    char res;
+    char res = 0;
 
+    if (aux < 0)
+        return 0;
     lseek(aux, addr, SEEK_SET);
-    read(aux, &res, 1);
+    if (read(aux, &res, 1) != 1)
+        return 0;
     return res;
 }
 
 void dpAuxWrite(aux_t aux, int addr, char val)
 {
+    if (aux < 0)
+        return;
     lseek(aux, addr, SEEK_SET);
-    write(aux, &val, 1);
+    if (write(aux, &val, 1) < 0) {
+        /* ignore or retry handled by caller */
+    }
 }
 
 void dpAuxWrites(aux_t aux, dpWrite_t data[])
 {
+    if (aux < 0)
+        return;
     for (int i=0; data[i].addr; i++) {
         lseek(aux, data[i].addr, SEEK_SET);
-        write(aux, data[i].val, data[i].nVal);
+        if (write(aux, data[i].val, data[i].nVal) < 0) {
+            /* ignore or retry handled by caller */
+        }
     }
 }
 
 void dpAuxClose(aux_t aux)
 {
-    close(aux);
+    if (aux >= 0)
+        close(aux);
 }
 
 
