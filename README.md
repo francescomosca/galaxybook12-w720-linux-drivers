@@ -18,7 +18,7 @@ Modular collection of kernel drivers, patches, and user-space utilities to enabl
 | **AMOLED Color Profiles** | ✅ | User-space script + GUI (`kdialog` / `zenity`) | All | Adobe RGB, DCI-P3, sRGB, Adaptive profiles |
 | **Audio (ALC298)** | ✅ | User-space C init + systemd sleep hook | All | Resolves silent internal speakers at boot and after sleep/resume |
 | **Accelerometer** | ✅ | Kernel module (`st_accel_samsung`) + `hwdb` | All (systemd-based) | Auto-rotation 1:1 match with OLED orientation (Wayland / X11) |
-| **Ambient Light Sensor** | ❌ | Missing driver / Work in progress | — | Automatic ambient backlight adjustment is currently unsupported |
+| **Ambient Light Sensor** | ✅ | Kernel module (`bh1730_samsung`) via IIO + user-space daemon | All (Kernel 6.x / 7.x; auto-brightness daemon currently targets KDE Plasma) | Native `in_illuminance_input` for `iio-sensor-proxy`; smooth auto-brightness daemon via KDE PowerDevil |
 
 ---
 
@@ -58,7 +58,8 @@ The master script will automatically install and configure:
 1. **Screen**: Compiles the DP-AUX brightness daemon, installs sudoers rules, and enables the systemd service.
 2. **Audio**: Compiles the ALC298 codec initializer and enables boot/resume services.
 3. **Accelerometer**: Builds and registers `st_accel_samsung` into DKMS, sets up `hwdb` rotation calibration.
-4. **Cameras**: Builds and registers the 5 camera modules into DKMS, installs libcamera IPU3 tuning profiles and Firefox policies.
+4. **Ambient Light Sensor**: Builds and registers `bh1730_samsung` into DKMS, sets up `iio-sensor-proxy` integration, and enables auto-brightness (KDE Plasma).
+5. **Cameras**: Builds and registers the 5 camera modules into DKMS, installs libcamera IPU3 tuning profiles and Firefox policies.
 
 ---
 
@@ -104,10 +105,22 @@ cd accel-sensor
 ./install.sh
 ```
 
+### 5. ☀️ [light-sensor/](light-sensor/)
+Native kernel driver for the ROHM BH1733 / BH1730FVC ambient light sensor (ACPI ID `SAM0204`).
+- Exposes standard Linux IIO illuminance interface (`in_illuminance_input`) for `iio-sensor-proxy`.
+- Includes DKMS support for automatic module rebuilds across kernel updates.
+- Native C daemon (`galaxybook-autobrightness`) with smooth fading and custom AMOLED photometric curve.
+  > [!NOTE]
+  > The kernel module and `iio-sensor-proxy` work across all desktop environments. The user-space auto-brightness daemon currently relies on **KDE Plasma (PowerDevil)**. On non-KDE environments, the kernel driver is installed normally, while daemon activation is skipped with a warning.
+```bash
+cd light-sensor
+./install.sh
+```
+
 ---
 
 ## 🔄 Automated Kernel Updates (DKMS)
-The kernel modules for the cameras and accelerometer integrate natively with **DKMS (Dynamic Kernel Module Support)**.
+The kernel modules for the cameras, accelerometer, and light sensor integrate natively with **DKMS (Dynamic Kernel Module Support)**.
 Whenever your distribution upgrades the Linux kernel (via `pacman -Syu`, `apt upgrade`, or `dnf upgrade`), DKMS will **automatically recompile and install** the drivers in the background for the newly installed kernel. No manual reinstallation is required.
 
 ---

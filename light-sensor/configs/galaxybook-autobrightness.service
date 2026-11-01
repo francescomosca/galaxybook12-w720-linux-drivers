@@ -1,0 +1,13 @@
+[Unit]
+Description=Samsung Galaxy Book 12 Ambient Light Sensor & Auto-Brightness Daemon
+After=plasma-powerdevil.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/galaxybook-autobrightness
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

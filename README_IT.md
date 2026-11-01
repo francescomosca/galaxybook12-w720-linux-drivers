@@ -18,7 +18,7 @@ Raccolta organizzata e modulare di driver kernel, patch e utilità per abilitare
 | **Profili Colore AMOLED** | ✅ | Script User-space + GUI (`kdialog` / `zenity`) | Tutte | Profili Adobe RGB, DCI-P3, sRGB, Adattivo |
 | **Audio (ALC298)** | ✅ | Inizializzatore C nativo + hook systemd sleep | Tutte | Risolve gli altoparlanti muti all'avvio e dopo la sospensione (sleep/resume) |
 | **Accelerometro** | ✅ | Modulo Kernel (`st_accel_samsung`) + `hwdb` | Tutte (con systemd) | Auto-rotazione 1:1 allineata al display OLED (Wayland / X11) |
-| **Sensore Luce Ambientale** | ❌ | Driver mancante / In lavorazione | — | La regolazione automatica della luminosità ambientale non è al momento supportata |
+| **Sensore Luce Ambientale** | ✅ | Modulo Kernel (`bh1730_samsung`) via IIO + demone user-space | Tutte (Kernel 6.x / 7.x; il demone auto-brightness attualmente richiede KDE Plasma) | Interfaccia nativa `in_illuminance_input` per `iio-sensor-proxy`; demone di auto-luminosità con fading fluido via KDE PowerDevil |
 
 ---
 
@@ -58,7 +58,8 @@ Lo script principale installerà e configurerà automaticamente:
 1. **Screen**: Compila il demone di luminosità DP-AUX, installa le regole sudoers e abilita il servizio systemd.
 2. **Audio**: Compila l'inizializzatore del codec ALC298 e abilita i servizi systemd per boot e resume dallo standby.
 3. **Accelerometro**: Compila e registra `st_accel_samsung` in DKMS, configura la matrice di calibrazione rotazione in `hwdb`.
-4. **Fotocamere**: Compila e registra i 5 moduli fotocamera in DKMS, installa i profili di tuning IPU3 libcamera e le policy Firefox.
+4. **Sensore Luce Ambientale**: Compila e registra `bh1730_samsung` in DKMS, configura `iio-sensor-proxy` e abilita l'auto-luminosità (KDE Plasma).
+5. **Fotocamere**: Compila e registra i 5 moduli fotocamera in DKMS, installa i profili di tuning IPU3 libcamera e le policy Firefox.
 
 ---
 
@@ -104,10 +105,22 @@ cd accel-sensor
 ./install.sh
 ```
 
+### 5. ☀️ [light-sensor/](light-sensor/)
+Driver kernel nativo per il sensore di luce ambientale ROHM BH1733 / BH1730FVC (ACPI ID `SAM0204`).
+- Espone l'interfaccia IIO standard Linux (`in_illuminance_input`) per `iio-sensor-proxy`.
+- Supporto DKMS per ricompilazione automatica agli aggiornamenti del kernel.
+- Demone nativo C (`galaxybook-autobrightness`) con transizione graduale e curva fotometrica AMOLED calibrata.
+  > [!NOTE]
+  > Il modulo kernel e `iio-sensor-proxy` funzionano su qualsiasi desktop environment. Il demone di luminosità automatica in spazio utente attualmente fa affidamento su **KDE Plasma (PowerDevil)**. Su ambienti non-KDE, il driver kernel viene installato normalmente, mentre l'avvio del demone viene saltato mostrando un warning.
+```bash
+cd light-sensor
+./install.sh
+```
+
 ---
 
 ## 🔄 Aggiornamenti Automatici del Kernel (DKMS)
-I moduli kernel per fotocamere e accelerometro si integrano nativamente con **DKMS (Dynamic Kernel Module Support)**.
+I moduli kernel per fotocamere, accelerometro e sensore di luce si integrano nativamente con **DKMS (Dynamic Kernel Module Support)**.
 Ogni volta che la tua distribuzione Linux aggiorna il kernel (es. con `pacman -Syu`, `apt upgrade` o `dnf upgrade`), DKMS **ricompila e installa automaticamente** i moduli in background per il nuovo kernel. Non è richiesto alcun intervento manuale.
 
 ---

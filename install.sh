@@ -14,19 +14,23 @@ echo ""
 # Check sudo permissions upfront
 sudo -v
 
-echo ">>> [1/4] Installing Screen (OLED Brightness & Color Profiles)..."
+echo ">>> [1/5] Installing Screen (OLED Brightness & Color Profiles)..."
 (cd "${SCRIPT_DIR}/screen" && ./install.sh)
 echo ""
 
-echo ">>> [2/4] Installing Audio (Realtek ALC298 Initializer)..."
+echo ">>> [2/5] Installing Audio (Realtek ALC298 Initializer)..."
 (cd "${SCRIPT_DIR}/audio" && ./install.sh)
 echo ""
 
-echo ">>> [3/4] Installing Accelerometer (LIS2HH12 Auto-Rotation)..."
+echo ">>> [3/5] Installing Accelerometer (LIS2HH12 Auto-Rotation)..."
 (cd "${SCRIPT_DIR}/accel-sensor" && ./install.sh)
 echo ""
 
-echo ">>> [4/4] Installing Cameras (Dual IMX258 / IMX241 & IPU3)..."
+echo ">>> [4/5] Installing Ambient Light Sensor & Auto-Brightness (BH1733 ALS)..."
+(cd "${SCRIPT_DIR}/light-sensor" && ./install.sh)
+echo ""
+
+echo ">>> [5/5] Installing Cameras (Dual IMX258 / IMX241 & IPU3)..."
 (cd "${SCRIPT_DIR}/cameras" && ./install.sh)
 echo ""
 
