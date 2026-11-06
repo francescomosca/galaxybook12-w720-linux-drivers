@@ -9,6 +9,49 @@ KERNEL_VER="$(uname -r)"
 MODULE_NAME="galaxybook-light-sensor"
 MODULE_VER="1.0"
 
+# Parse minimum brightness parameter or variable (default: 0 = no lower-bound clamp)
+MIN_BRIGHTNESS="${MIN_BRIGHTNESS:-0}"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -m|--min-brightness)
+            MIN_BRIGHTNESS="$2"
+            shift 2
+            ;;
+        --min-brightness=*)
+            MIN_BRIGHTNESS="${1#*=}"
+            shift 1
+            ;;
+        -h|--help)
+            echo "Usage: $0 [OPTIONS]"
+            echo "Options:"
+            echo "  -m, --min-brightness <0-100>  Set minimum auto-brightness percentage (default: 0)"
+            echo "                                Can also be set via MIN_BRIGHTNESS env variable."
+            echo "  -h, --help                     Show this help message"
+            exit 0
+            ;;
+        [0-9]*)
+            MIN_BRIGHTNESS="$1"
+            shift 1
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+# Validate MIN_BRIGHTNESS
+if ! [[ "$MIN_BRIGHTNESS" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo "ERROR: Invalid minimum brightness value '${MIN_BRIGHTNESS}'. Must be a number between 0 and 100."
+    exit 1
+fi
+MIN_BRIGHTNESS_INT="${MIN_BRIGHTNESS%%.*}"
+if (( MIN_BRIGHTNESS_INT < 0 || MIN_BRIGHTNESS_INT > 100 )); then
+    echo "ERROR: Minimum brightness must be between 0 and 100 (got ${MIN_BRIGHTNESS})."
+    exit 1
+fi
+
 # Determine target non-root user and home directory
 TARGET_USER="${SUDO_USER:-$USER}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
@@ -63,7 +106,61 @@ sudo systemctl stop galaxybook-autobrightness.service 2>/dev/null || true
 sudo systemctl disable galaxybook-autobrightness.service 2>/dev/null || true
 sudo rm -f /etc/systemd/system/galaxybook-autobrightness.service
 
-echo "=== [6/6] Enabling and starting user auto-brightness service ==="
+echo "=== [6/6] Configuring auto-brightness (${MIN_BRIGHTNESS}%) and enabling service ==="
+
+# 1. User config in ~/.config/galaxybook-autobrightness.conf
+USER_CONFIG_DIR="${TARGET_HOME}/.config"
+USER_CONFIG_FILE="${USER_CONFIG_DIR}/galaxybook-autobrightness.conf"
+
+if [ "$EUID" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
+    sudo -u "$TARGET_USER" mkdir -p "${USER_CONFIG_DIR}"
+    if [ -f "${USER_CONFIG_FILE}" ]; then
+        if grep -q "^min_brightness=" "${USER_CONFIG_FILE}"; then
+            sed -i "s/^min_brightness=.*/min_brightness=${MIN_BRIGHTNESS}/" "${USER_CONFIG_FILE}"
+        else
+            echo "min_brightness=${MIN_BRIGHTNESS}" >> "${USER_CONFIG_FILE}"
+        fi
+    else
+        cat <<EOF | sudo -u "$TARGET_USER" tee "${USER_CONFIG_FILE}" >/dev/null
+# Samsung Galaxy Book 12 Auto-Brightness Configuration
+enabled=true
+min_brightness=${MIN_BRIGHTNESS}
+EOF
+    fi
+else
+    mkdir -p "${USER_CONFIG_DIR}"
+    if [ -f "${USER_CONFIG_FILE}" ]; then
+        if grep -q "^min_brightness=" "${USER_CONFIG_FILE}"; then
+            sed -i "s/^min_brightness=.*/min_brightness=${MIN_BRIGHTNESS}/" "${USER_CONFIG_FILE}"
+        else
+            echo "min_brightness=${MIN_BRIGHTNESS}" >> "${USER_CONFIG_FILE}"
+        fi
+    else
+        cat <<EOF > "${USER_CONFIG_FILE}"
+# Samsung Galaxy Book 12 Auto-Brightness Configuration
+enabled=true
+min_brightness=${MIN_BRIGHTNESS}
+EOF
+    fi
+fi
+
+# 2. System-wide default in /etc/galaxybook-autobrightness.conf
+sudo mkdir -p /etc
+if [ -f /etc/galaxybook-autobrightness.conf ]; then
+    if grep -q "^min_brightness=" /etc/galaxybook-autobrightness.conf; then
+        sudo sed -i "s/^min_brightness=.*/min_brightness=${MIN_BRIGHTNESS}/" /etc/galaxybook-autobrightness.conf
+    else
+        echo "min_brightness=${MIN_BRIGHTNESS}" | sudo tee -a /etc/galaxybook-autobrightness.conf >/dev/null
+    fi
+else
+    cat <<EOF | sudo tee /etc/galaxybook-autobrightness.conf >/dev/null
+# Samsung Galaxy Book 12 Auto-Brightness System Defaults
+enabled=true
+min_brightness=${MIN_BRIGHTNESS}
+EOF
+fi
+
+# 3. User systemd service installation and activation
 USER_SYSTEMD_DIR="${TARGET_HOME}/.config/systemd/user"
 if [ "$EUID" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
     sudo -u "$TARGET_USER" mkdir -p "${USER_SYSTEMD_DIR}"
@@ -87,5 +184,6 @@ if command -v dkms >/dev/null 2>&1; then
     echo " PERSISTENCE: Managed by DKMS (automatic rebuild on kernel updates)."
 fi
 echo " Service: galaxybook-autobrightness (native C binary, multi-DE, silent)"
+echo " Minimum brightness limit: ${MIN_BRIGHTNESS}% (configured in ~/.config/galaxybook-autobrightness.conf)"
 echo " Sensor test: run 'monitor-sensor' or check /sys/bus/iio/devices/"
 echo "=========================================================="

@@ -51,7 +51,13 @@ The easiest way to get everything working is using the root **master installer**
 ```bash
 git clone https://github.com/francescomosca/galaxybook12-w720-linux-drivers.git
 cd samsung-galaxybook12-linux-drivers
+
+# Standard install (default min brightness: 0%)
 ./install.sh
+
+# Or set custom minimum auto-brightness limit (e.g. 15% or 30%):
+./install.sh --min-brightness 15
+# (or MIN_BRIGHTNESS=15 ./install.sh)
 ```
 
 The master script will automatically install and configure:

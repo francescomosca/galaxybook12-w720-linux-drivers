@@ -20,7 +20,8 @@
  *  - KDE Plasma (KWin): `~/.config/kwinoutputconfig.json` (`"automaticBrightness"` on `eDP*`)
  *  - GNOME / Budgie: GSettings `org.gnome.settings-daemon.plugins.power` (`ambient-enabled`)
  *  - Cinnamon: GSettings `org.cinnamon.settings-daemon.plugins.power` (`ambient-enabled`)
- *  - Universal user override: `~/.config/galaxybook-autobrightness.conf` (`enabled=true|false`)
+ *  - Universal config override: `~/.config/galaxybook-autobrightness.conf` / `/etc/galaxybook-autobrightness.conf`
+ *    (`enabled=true|false`, `min_brightness=<0-100>`)
  */
 
 #include <stdio.h>
@@ -65,9 +66,13 @@ typedef struct {
     double pct;
 } CurvePoint;
 
+/*
+ * Base calibrated photometric curve for Samsung AMOLED panel.
+ * Lower boundary at 0 lux is 0.0% (clamped at runtime by configurable min_brightness_pct).
+ */
 static const CurvePoint ALS_CURVE[] = {
-    { 0.0,    30.0 },
-    { 4.0,    30.0 },
+    { 0.0,     0.0 },
+    { 4.0,    10.0 },
     { 15.0,   38.0 },
     { 40.0,   50.0 },
     { 100.0,  65.0 },
@@ -103,15 +108,19 @@ typedef struct {
     gchar *sysfs_backlight_name;
     gchar *sysfs_backlight_dir;
 
-    /* Auto-brightness setting monitors */
+    /* Config monitors and settings */
     gboolean is_kde_session;
     gchar *kwin_config_path;
     GFileMonitor *kwin_config_monitor;
     gchar *user_config_path;
     GFileMonitor *user_config_monitor;
+    gchar *sys_config_path;
+    GFileMonitor *sys_config_monitor;
     guint config_reload_timer_id;
     GSettings *de_power_settings;
     gboolean auto_brightness_enabled;
+    double min_brightness_pct;
+    gboolean min_brightness_cli_set;
 
     /* Smooth transition state */
     guint timer_id;
@@ -129,25 +138,37 @@ static void select_best_backend(void);
 static void claim_sensor(void);
 static void release_sensor(void);
 static void fetch_initial_light_level(void);
+static void reload_config_settings(void);
+static void start_transition(void);
 
 static double lux_to_target_pct(double lux)
 {
+    double pct = 50.0;
+
     if (lux <= ALS_CURVE[0].lux)
-        return ALS_CURVE[0].pct;
-    if (lux >= ALS_CURVE[ALS_CURVE_SIZE - 1].lux)
-        return ALS_CURVE[ALS_CURVE_SIZE - 1].pct;
+        pct = ALS_CURVE[0].pct;
+    else if (lux >= ALS_CURVE[ALS_CURVE_SIZE - 1].lux)
+        pct = ALS_CURVE[ALS_CURVE_SIZE - 1].pct;
+    else {
+        for (size_t i = 0; i < ALS_CURVE_SIZE - 1; i++) {
+            double x0 = ALS_CURVE[i].lux;
+            double y0 = ALS_CURVE[i].pct;
+            double x1 = ALS_CURVE[i + 1].lux;
+            double y1 = ALS_CURVE[i + 1].pct;
 
-    for (size_t i = 0; i < ALS_CURVE_SIZE - 1; i++) {
-        double x0 = ALS_CURVE[i].lux;
-        double y0 = ALS_CURVE[i].pct;
-        double x1 = ALS_CURVE[i + 1].lux;
-        double y1 = ALS_CURVE[i + 1].pct;
-
-        if (lux >= x0 && lux <= x1) {
-            return y0 + (lux - x0) * (y1 - y0) / (x1 - x0);
+            if (lux >= x0 && lux <= x1) {
+                pct = y0 + (lux - x0) * (y1 - y0) / (x1 - x0);
+                break;
+            }
         }
     }
-    return 50.0;
+
+    if (pct < ctx.min_brightness_pct)
+        pct = ctx.min_brightness_pct;
+    if (pct > 100.0)
+        pct = 100.0;
+
+    return pct;
 }
 
 static gboolean detect_kde_environment(void)
@@ -320,51 +341,91 @@ static int parse_kwin_auto_brightness_json(const char *json, gsize len)
     return 1;
 }
 
-static int read_user_override_config(void)
+static int parse_config_file(const gchar *path, int *out_enabled, double *out_min_brightness)
 {
-    if (!ctx.user_config_path)
+    if (!path)
         return -2;
 
     gchar *contents = NULL;
     gsize len = 0;
-    if (!g_file_get_contents(ctx.user_config_path, &contents, &len, NULL))
+    if (!g_file_get_contents(path, &contents, &len, NULL))
         return -2;
 
-    int result = -2;
+    int enabled = -2;
     gchar **lines = g_strsplit(contents, "\n", -1);
     for (int i = 0; lines && lines[i]; i++) {
         gchar *line = g_strstrip(lines[i]);
         if (*line == '\0' || *line == '#')
             continue;
-        if (g_str_has_prefix(line, "enabled")) {
-            const char *eq = strchr(line, '=');
-            if (eq) {
-                gchar *val = g_strstrip(g_strdup(eq + 1));
-                if (g_ascii_strcasecmp(val, "false") == 0 ||
-                    g_ascii_strcasecmp(val, "0") == 0 ||
-                    g_ascii_strcasecmp(val, "no") == 0 ||
-                    g_ascii_strcasecmp(val, "off") == 0) {
-                    result = 0;
-                } else if (g_ascii_strcasecmp(val, "true") == 0 ||
-                           g_ascii_strcasecmp(val, "1") == 0 ||
-                           g_ascii_strcasecmp(val, "yes") == 0 ||
-                           g_ascii_strcasecmp(val, "on") == 0) {
-                    result = 1;
-                }
-                g_free(val);
+        const char *eq = strchr(line, '=');
+        if (!eq)
+            continue;
+
+        gchar *key = g_strstrip(g_strndup(line, eq - line));
+        gchar *val = g_strstrip(g_strdup(eq + 1));
+
+        if (g_ascii_strcasecmp(key, "enabled") == 0) {
+            if (g_ascii_strcasecmp(val, "false") == 0 ||
+                g_ascii_strcasecmp(val, "0") == 0 ||
+                g_ascii_strcasecmp(val, "no") == 0 ||
+                g_ascii_strcasecmp(val, "off") == 0) {
+                enabled = 0;
+            } else if (g_ascii_strcasecmp(val, "true") == 0 ||
+                       g_ascii_strcasecmp(val, "1") == 0 ||
+                       g_ascii_strcasecmp(val, "yes") == 0 ||
+                       g_ascii_strcasecmp(val, "on") == 0) {
+                enabled = 1;
+            }
+        } else if (g_ascii_strcasecmp(key, "min_brightness") == 0 ||
+                   g_ascii_strcasecmp(key, "min_pct") == 0 ||
+                   g_ascii_strcasecmp(key, "min") == 0) {
+            char *endptr = NULL;
+            double d = g_ascii_strtod(val, &endptr);
+            if (endptr && endptr != val && d >= 0.0 && d <= 100.0) {
+                if (out_min_brightness)
+                    *out_min_brightness = d;
             }
         }
+        g_free(key);
+        g_free(val);
     }
     g_strfreev(lines);
     g_free(contents);
-    return result;
+
+    if (out_enabled && enabled != -2)
+        *out_enabled = enabled;
+    return enabled;
+}
+
+static void reload_config_settings(void)
+{
+    int user_enabled = -2;
+    double cfg_min = -1.0;
+
+    parse_config_file(ctx.sys_config_path, &user_enabled, &cfg_min);
+    parse_config_file(ctx.user_config_path, &user_enabled, &cfg_min);
+
+    if (!ctx.min_brightness_cli_set && cfg_min >= 0.0) {
+        if (fabs(ctx.min_brightness_pct - cfg_min) > 0.01) {
+            ctx.min_brightness_pct = cfg_min;
+            if (ctx.claimed && ctx.auto_brightness_enabled) {
+                double new_target = lux_to_target_pct(ctx.current_lux);
+                if (fabs(new_target - ctx.target_pct) >= 0.5) {
+                    ctx.target_pct = new_target;
+                    start_transition();
+                }
+            }
+        }
+    }
 }
 
 static int evaluate_auto_brightness_enabled(void)
 {
-    int user_override = read_user_override_config();
-    if (user_override == 0 || user_override == 1)
-        return user_override;
+    int user_enabled = -2;
+    parse_config_file(ctx.sys_config_path, &user_enabled, NULL);
+    parse_config_file(ctx.user_config_path, &user_enabled, NULL);
+    if (user_enabled == 0 || user_enabled == 1)
+        return user_enabled;
 
     if ((ctx.is_kde_session || ctx.kde_screen_bus_present || ctx.kde_power_bus_present) &&
         ctx.kwin_config_path) {
@@ -499,8 +560,8 @@ static void apply_brightness_silent(double pct)
 
     gint32 max_val = (ctx.brightness_max > 0) ? ctx.brightness_max : 10000;
     gint32 val = (gint32)round((pct / 100.0) * max_val);
-    if (val < 0)
-        val = 0;
+    if (val < 1 && max_val > 0)
+        val = 1;
     if (val > max_val)
         val = max_val;
 
@@ -1163,6 +1224,8 @@ static gboolean on_config_reload_timeout(gpointer user_data)
     (void)user_data;
     ctx.config_reload_timer_id = 0;
 
+    reload_config_settings();
+
     int state = evaluate_auto_brightness_enabled();
     if (state < 0) {
         ctx.config_reload_timer_id = g_timeout_add(50, on_config_reload_timeout, NULL);
@@ -1250,8 +1313,10 @@ static void init_config_monitors(void)
     ctx.is_kde_session = detect_kde_environment();
     ctx.kwin_config_path = g_build_filename(g_get_user_config_dir(), "kwinoutputconfig.json", NULL);
     ctx.user_config_path = g_build_filename(g_get_user_config_dir(), "galaxybook-autobrightness.conf", NULL);
+    ctx.sys_config_path = g_strdup("/etc/galaxybook-autobrightness.conf");
 
     init_de_gsettings_monitor();
+    reload_config_settings();
 
     int initial = evaluate_auto_brightness_enabled();
     ctx.auto_brightness_enabled = (initial != 0);
@@ -1269,6 +1334,13 @@ static void init_config_monitors(void)
         g_signal_connect(ctx.user_config_monitor, "changed", G_CALLBACK(on_config_file_changed), NULL);
     }
     g_object_unref(user_file);
+
+    GFile *sys_file = g_file_new_for_path(ctx.sys_config_path);
+    ctx.sys_config_monitor = g_file_monitor_file(sys_file, G_FILE_MONITOR_NONE, NULL, NULL);
+    if (ctx.sys_config_monitor) {
+        g_signal_connect(ctx.sys_config_monitor, "changed", G_CALLBACK(on_config_file_changed), NULL);
+    }
+    g_object_unref(sys_file);
 }
 
 static gboolean on_unix_signal(gpointer user_data)
@@ -1279,14 +1351,59 @@ static gboolean on_unix_signal(gpointer user_data)
     return G_SOURCE_REMOVE;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    /* Default minimum brightness limit: 0.0% (30% clamp removed) */
+    ctx.min_brightness_pct = 0.0;
+    ctx.min_brightness_cli_set = FALSE;
     ctx.current_pct = 30.0;
     ctx.target_pct = 30.0;
     ctx.step_interval_ms = 50;
     ctx.step_rate_pct = 0.8;
     ctx.brightness_max = 10000;
     ctx.auto_brightness_enabled = TRUE;
+
+    /* Check environment variable override */
+    const char *env_min = g_getenv("MIN_BRIGHTNESS");
+    if (!env_min)
+        env_min = g_getenv("GALAXYBOOK_MIN_BRIGHTNESS");
+    if (env_min) {
+        char *endptr = NULL;
+        double d = g_ascii_strtod(env_min, &endptr);
+        if (endptr && endptr != env_min && d >= 0.0 && d <= 100.0) {
+            ctx.min_brightness_pct = d;
+        }
+    }
+
+    /* Parse command-line options */
+    for (int i = 1; i < argc; i++) {
+        if ((strcmp(argv[i], "-m") == 0 || strcmp(argv[i], "--min-brightness") == 0) && i + 1 < argc) {
+            char *endptr = NULL;
+            double d = g_ascii_strtod(argv[i + 1], &endptr);
+            if (endptr && endptr != argv[i + 1] && d >= 0.0 && d <= 100.0) {
+                ctx.min_brightness_pct = d;
+                ctx.min_brightness_cli_set = TRUE;
+            }
+            i++;
+        } else if (strncmp(argv[i], "--min-brightness=", 17) == 0) {
+            const char *val_str = argv[i] + 17;
+            char *endptr = NULL;
+            double d = g_ascii_strtod(val_str, &endptr);
+            if (endptr && endptr != val_str && d >= 0.0 && d <= 100.0) {
+                ctx.min_brightness_pct = d;
+                ctx.min_brightness_cli_set = TRUE;
+            }
+        } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            printf("Usage: %s [OPTIONS]\n", argv[0]);
+            printf("Options:\n");
+            printf("  -m, --min-brightness <0-100>  Set minimum auto-brightness percentage (default: 0)\n");
+            printf("  -h, --help                     Show this help message\n");
+            return 0;
+        }
+    }
+
+    ctx.current_pct = ctx.min_brightness_pct;
+    ctx.target_pct = ctx.min_brightness_pct;
 
     GError *error = NULL;
     ctx.system_bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &error);
@@ -1409,6 +1526,12 @@ int main(void)
         ctx.user_config_monitor = NULL;
     }
 
+    if (ctx.sys_config_monitor) {
+        g_file_monitor_cancel(ctx.sys_config_monitor);
+        g_object_unref(ctx.sys_config_monitor);
+        ctx.sys_config_monitor = NULL;
+    }
+
     if (ctx.de_power_settings) {
         g_object_unref(ctx.de_power_settings);
         ctx.de_power_settings = NULL;
@@ -1438,6 +1561,7 @@ int main(void)
     g_free(ctx.sysfs_backlight_dir);
     g_free(ctx.kwin_config_path);
     g_free(ctx.user_config_path);
+    g_free(ctx.sys_config_path);
 
     if (ctx.system_bus)
         g_object_unref(ctx.system_bus);

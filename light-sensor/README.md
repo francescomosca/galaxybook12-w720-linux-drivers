@@ -9,7 +9,7 @@ Native Linux kernel driver and high-performance native **C auto-brightness daemo
   - **KDE Plasma 6**: Per-display `org.kde.ScreenBrightness.Display.SetBrightness` (`IsInternal == true`, silent, external monitors untouched), monitoring `~/.config/kwinoutputconfig.json` (`automaticBrightness`).
   - **KDE Plasma 5**: Legacy `org.kde.Solid.PowerManagement.Actions.BrightnessControl` fallback.
   - **GNOME, Cinnamon, XFCE, MATE, LXQt, Sway, Hyprland, Cosmic, etc.**: Universal `systemd-logind` (`org.freedesktop.login1.Session.SetBrightness` on `/sys/class/backlight/intel_backlight`), respecting GNOME/Cinnamon `ambient-enabled` GSettings and `~/.config/galaxybook-autobrightness.conf`.
-- **Smooth Fading & Calibrated Photometric Curve**: Smooth stepping transitions with lower-bound clamping at 30% for $\le 4\text{ lux}$ to avoid aggressive AMOLED panel dimming in dark environments.
+- **Smooth Fading & Calibrated Photometric Curve**: Smooth stepping transitions with natural AMOLED logarithmic scaling. The minimum brightness limit defaults to 0% (unrestricted) and is fully configurable via installer parameter/environment variable or `~/.config/galaxybook-autobrightness.conf`.
 - **DKMS Support**: Automatic kernel module recompilation and installation across system kernel updates.
 
 ---
@@ -33,7 +33,14 @@ Native Linux kernel driver and high-performance native **C auto-brightness daemo
 
 ```bash
 cd finale/light-sensor
+
+# Standard install (default minimum brightness: 0%)
 ./install.sh
+
+# Or set custom minimum brightness limit (e.g. 15% or 30%):
+./install.sh --min-brightness 15
+# Alternatively via environment variable:
+MIN_BRIGHTNESS=15 ./install.sh
 ```
 
 ## 🗑️ Uninstallation

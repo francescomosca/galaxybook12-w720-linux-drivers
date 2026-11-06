@@ -40,6 +40,7 @@ sudo depmod -a
 
 echo "=== [4/4] Removing boot-time configuration ==="
 sudo rm -f /etc/modules-load.d/galaxybook-light-sensor.conf
+sudo rm -f /etc/galaxybook-autobrightness.conf
 sudo systemctl restart iio-sensor-proxy 2>/dev/null || true
 
 echo "Ambient Light Sensor driver and auto-brightness service uninstalled."
