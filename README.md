@@ -1,6 +1,6 @@
 # Samsung Galaxy Book 12 (SM-W720) - Linux Hardware Fixes & Drivers
 
-[🇮🇹 **Leggi la documentazione in Italiano**](README_IT.md)
+[🇮🇹 **Italiano**](README_IT.md)
 
 Modular collection of kernel drivers, patches, and user-space utilities to enable full hardware support for the **Samsung Galaxy Book 12 (SM-W720)** 2-in-1 tablet PC on Linux (Arch Linux, CachyOS, Ubuntu, Debian, Fedora, etc. with Kernel 6.x and 7.x).
 
@@ -18,7 +18,7 @@ Modular collection of kernel drivers, patches, and user-space utilities to enabl
 | **AMOLED Color Profiles** | ✅ | User-space script + GUI (`kdialog` / `zenity`) | All | Adobe RGB, DCI-P3, sRGB, Adaptive profiles |
 | **Audio (ALC298)** | ✅ | User-space C init + systemd sleep hook | All | Resolves silent internal speakers at boot and after sleep/resume |
 | **Accelerometer** | ✅ | Kernel module (`st_accel_samsung`) + `hwdb` | All (systemd-based) | Auto-rotation 1:1 match with OLED orientation (Wayland / X11) |
-| **Ambient Light Sensor** | ✅ | Kernel module (`bh1730_samsung`) via IIO + user-space daemon | All (Kernel 6.x / 7.x; auto-brightness daemon currently targets KDE Plasma) | Native `in_illuminance_input` for `iio-sensor-proxy`; smooth auto-brightness daemon via KDE PowerDevil |
+| **Ambient Light Sensor** | ✅ | Kernel module (`bh1730_samsung`) via IIO + user-space daemon | All (Kernel 6.x / 7.x, KDE, GNOME, XFCE, Sway, Hyprland, etc.) | Native `in_illuminance_input` for `iio-sensor-proxy`; multi-DE smooth auto-brightness daemon |
 
 ---
 
@@ -49,7 +49,7 @@ sudo dnf install make gcc kernel-devel kernel-headers dkms libcamera-tools iio-s
 The easiest way to get everything working is using the root **master installer**. It configures and installs all hardware drivers in the correct order, sets up DKMS for kernel persistence, and starts background services:
 
 ```bash
-git clone https://github.com/francescomosca/samsung-galaxybook12-linux-drivers.git
+git clone https://github.com/francescomosca/galaxybook12-w720-linux-drivers.git
 cd samsung-galaxybook12-linux-drivers
 ./install.sh
 ```
@@ -58,7 +58,7 @@ The master script will automatically install and configure:
 1. **Screen**: Compiles the DP-AUX brightness daemon, installs sudoers rules, and enables the systemd service.
 2. **Audio**: Compiles the ALC298 codec initializer and enables boot/resume services.
 3. **Accelerometer**: Builds and registers `st_accel_samsung` into DKMS, sets up `hwdb` rotation calibration.
-4. **Ambient Light Sensor**: Builds and registers `bh1730_samsung` into DKMS, sets up `iio-sensor-proxy` integration, and enables auto-brightness (KDE Plasma).
+4. **Ambient Light Sensor**: Builds and registers `bh1730_samsung` into DKMS, sets up `iio-sensor-proxy` integration, and enables auto-brightness.
 5. **Cameras**: Builds and registers the 5 camera modules into DKMS, installs libcamera IPU3 tuning profiles and Firefox policies.
 
 ---
@@ -109,9 +109,7 @@ cd accel-sensor
 Native kernel driver for the ROHM BH1733 / BH1730FVC ambient light sensor (ACPI ID `SAM0204`).
 - Exposes standard Linux IIO illuminance interface (`in_illuminance_input`) for `iio-sensor-proxy`.
 - Includes DKMS support for automatic module rebuilds across kernel updates.
-- Native C daemon (`galaxybook-autobrightness`) with smooth fading and custom AMOLED photometric curve.
-  > [!NOTE]
-  > The kernel module and `iio-sensor-proxy` work across all desktop environments. The user-space auto-brightness daemon currently relies on **KDE Plasma (PowerDevil)**. On non-KDE environments, the kernel driver is installed normally, while daemon activation is skipped with a warning.
+- Native C daemon (`galaxybook-autobrightness`) with smooth fading, custom AMOLED photometric curve, and multi-DE backend (`org.kde.ScreenBrightness`, Plasma 5 fallback, and universal `systemd-logind` `/sys/class/backlight/intel_backlight`).
 ```bash
 cd light-sensor
 ./install.sh

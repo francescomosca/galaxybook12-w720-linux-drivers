@@ -5,13 +5,12 @@ Native Linux kernel driver and high-performance native **C auto-brightness daemo
 ## 🌟 Features
 - **Linux IIO Kernel Driver**: Exposes `/sys/bus/iio/devices/iio:device0/in_illuminance_input`.
 - **`iio-sensor-proxy` Integration**: Feeds real-time illuminance levels to D-Bus `net.hadess.SensorProxy` (`LightLevel`).
-- **Native C Daemon**: `galaxybook-autobrightness` (written in native C with GIO/GLib D-Bus) claims the light sensor via `ClaimLight()` and modulates AMOLED panel brightness via `setBrightnessSilent` on KDE Solid PowerManagement (completely silent, no OSD popups, non-blocking asynchronous calls).
+- **Multi-DE & Multi-Distro Native C Daemon**: `galaxybook-autobrightness` (written in native C with GIO/GLib D-Bus) claims the light sensor via `ClaimLight()` and modulates **only** the built-in AMOLED panel (`eDP-1`) across all Linux desktop environments:
+  - **KDE Plasma 6**: Per-display `org.kde.ScreenBrightness.Display.SetBrightness` (`IsInternal == true`, silent, external monitors untouched), monitoring `~/.config/kwinoutputconfig.json` (`automaticBrightness`).
+  - **KDE Plasma 5**: Legacy `org.kde.Solid.PowerManagement.Actions.BrightnessControl` fallback.
+  - **GNOME, Cinnamon, XFCE, MATE, LXQt, Sway, Hyprland, Cosmic, etc.**: Universal `systemd-logind` (`org.freedesktop.login1.Session.SetBrightness` on `/sys/class/backlight/intel_backlight`), respecting GNOME/Cinnamon `ambient-enabled` GSettings and `~/.config/galaxybook-autobrightness.conf`.
 - **Smooth Fading & Calibrated Photometric Curve**: Smooth stepping transitions with lower-bound clamping at 30% for $\le 4\text{ lux}$ to avoid aggressive AMOLED panel dimming in dark environments.
 - **DKMS Support**: Automatic kernel module recompilation and installation across system kernel updates.
-
-> [!NOTE]
-> The kernel module and `iio-sensor-proxy` are desktop-agnostic and work across all Linux desktop environments (GNOME, Sway, Hyprland, etc.).
-> The user-space auto-brightness daemon (`galaxybook-autobrightness`) currently targets **KDE Plasma (PowerDevil)**. The installer automatically detects non-KDE environments, installs the kernel module, and safely skips user-space daemon activation with a warning.
 
 ---
 
