@@ -16,6 +16,7 @@
 /audio/src/alc298_init
 /screen/src/brightness
 /light-sensor/src/galaxybook-autobrightness
+/light-sensor/src/autobrightness/galaxybook-autobrightness
 
 # Temporary and editor files
 *~

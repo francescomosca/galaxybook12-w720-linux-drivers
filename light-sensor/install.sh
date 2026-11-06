@@ -98,8 +98,8 @@ echo "=== [4/6] Restarting sensor proxy ==="
 sudo systemctl restart iio-sensor-proxy 2>/dev/null || true
 
 echo "=== [5/6] Compiling auto-brightness daemon ==="
-make -C "${SCRIPT_DIR}/src" daemon
-sudo install -m 755 "${SCRIPT_DIR}/src/galaxybook-autobrightness" /usr/local/bin/galaxybook-autobrightness
+make -C "${SCRIPT_DIR}/src/autobrightness"
+sudo install -m 755 "${SCRIPT_DIR}/src/autobrightness/galaxybook-autobrightness" /usr/local/bin/galaxybook-autobrightness
 
 # Clean up old root system service if present
 sudo systemctl stop galaxybook-autobrightness.service 2>/dev/null || true

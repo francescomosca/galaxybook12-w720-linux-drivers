@@ -18,8 +18,15 @@ Native Linux kernel driver and high-performance native **C auto-brightness daemo
 
 - **`src/`**:
   - `bh1730_samsung.c`: Kernel driver source (Linux IIO subsystem with PM suspend/resume support).
-  - `galaxybook-autobrightness.c`: High-efficiency native C daemon (GIO D-Bus).
-  - `Makefile`: Build instructions for kernel module and user-space binary.
+  - `Makefile`: Kernel module build instructions (DKMS-compatible).
+  - **`autobrightness/`**:
+    - `main.c`: Daemon lifecycle, argument parsing, stepping timer, and main event loop.
+    - `brightness.c` / `brightness.h`: Multi-DE brightness backends (KDE Plasma 6 per-display, Plasma 5 legacy, `systemd-logind` + sysfs).
+    - `config.c` / `config.h`: Real-time configuration & setting monitors (KWin JSON, GSettings, conf files).
+    - `sensor.c` / `sensor.h`: `net.hadess.SensorProxy` D-Bus client integration.
+    - `curve.c` / `curve.h`: Calibrated photometric curve and lux interpolation.
+    - `common.h`: Shared types and D-Bus definitions.
+    - `Makefile`: Build instructions for user-space daemon binary.
 - **`configs/`**:
   - `galaxybook-light-sensor.conf`: Autoload configuration for `/etc/modules-load.d/`.
   - `galaxybook-autobrightness.service`: Systemd user service unit for graphical desktop sessions.
