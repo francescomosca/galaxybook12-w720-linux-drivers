@@ -115,21 +115,26 @@ USER_CONFIG_FILE="${USER_CONFIG_DIR}/galaxybook-autobrightness.conf"
 if [ "$EUID" -eq 0 ] && [ "$TARGET_USER" != "root" ]; then
     sudo -u "$TARGET_USER" mkdir -p "${USER_CONFIG_DIR}"
     if [ -f "${USER_CONFIG_FILE}" ]; then
+        # Migrate any stale enabled=true override so it doesn't mask DE toggles
+        sudo -u "$TARGET_USER" sed -i "s/^enabled=true/# enabled=true/" "${USER_CONFIG_FILE}" 2>/dev/null || true
         if grep -q "^min_brightness=" "${USER_CONFIG_FILE}"; then
-            sed -i "s/^min_brightness=.*/min_brightness=${MIN_BRIGHTNESS}/" "${USER_CONFIG_FILE}"
+            sudo -u "$TARGET_USER" sed -i "s/^min_brightness=.*/min_brightness=${MIN_BRIGHTNESS}/" "${USER_CONFIG_FILE}"
         else
-            echo "min_brightness=${MIN_BRIGHTNESS}" >> "${USER_CONFIG_FILE}"
+            echo "min_brightness=${MIN_BRIGHTNESS}" | sudo -u "$TARGET_USER" tee -a "${USER_CONFIG_FILE}" >/dev/null
         fi
     else
         cat <<EOF | sudo -u "$TARGET_USER" tee "${USER_CONFIG_FILE}" >/dev/null
 # Samsung Galaxy Book 12 Auto-Brightness Configuration
-enabled=true
+# Minimum brightness percentage limit (0-100)
 min_brightness=${MIN_BRIGHTNESS}
+# enabled=true (uncomment to force override; defaults to desktop environment toggle)
 EOF
     fi
 else
     mkdir -p "${USER_CONFIG_DIR}"
     if [ -f "${USER_CONFIG_FILE}" ]; then
+        # Migrate any stale enabled=true override so it doesn't mask DE toggles
+        sed -i "s/^enabled=true/# enabled=true/" "${USER_CONFIG_FILE}" 2>/dev/null || true
         if grep -q "^min_brightness=" "${USER_CONFIG_FILE}"; then
             sed -i "s/^min_brightness=.*/min_brightness=${MIN_BRIGHTNESS}/" "${USER_CONFIG_FILE}"
         else
@@ -138,8 +143,9 @@ else
     else
         cat <<EOF > "${USER_CONFIG_FILE}"
 # Samsung Galaxy Book 12 Auto-Brightness Configuration
-enabled=true
+# Minimum brightness percentage limit (0-100)
 min_brightness=${MIN_BRIGHTNESS}
+# enabled=true (uncomment to force override; defaults to desktop environment toggle)
 EOF
     fi
 fi
@@ -147,6 +153,7 @@ fi
 # 2. System-wide default in /etc/galaxybook-autobrightness.conf
 sudo mkdir -p /etc
 if [ -f /etc/galaxybook-autobrightness.conf ]; then
+    sudo sed -i "s/^enabled=true/# enabled=true/" /etc/galaxybook-autobrightness.conf 2>/dev/null || true
     if grep -q "^min_brightness=" /etc/galaxybook-autobrightness.conf; then
         sudo sed -i "s/^min_brightness=.*/min_brightness=${MIN_BRIGHTNESS}/" /etc/galaxybook-autobrightness.conf
     else
@@ -155,8 +162,9 @@ if [ -f /etc/galaxybook-autobrightness.conf ]; then
 else
     cat <<EOF | sudo tee /etc/galaxybook-autobrightness.conf >/dev/null
 # Samsung Galaxy Book 12 Auto-Brightness System Defaults
-enabled=true
+# Minimum brightness percentage limit (0-100)
 min_brightness=${MIN_BRIGHTNESS}
+# enabled=true (uncomment to force override; defaults to desktop environment toggle)
 EOF
 fi
 

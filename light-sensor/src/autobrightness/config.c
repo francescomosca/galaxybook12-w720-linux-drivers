@@ -15,7 +15,12 @@ static gboolean detect_kde_environment(void)
     if (session && (g_strstr_len(session, -1, "KDE") || g_strstr_len(session, -1, "kde") ||
                     g_strstr_len(session, -1, "plasma")))
         return TRUE;
-    return FALSE;
+
+    /* Fallback: if kwinoutputconfig.json exists, we are running under KWin */
+    gchar *kwin = g_build_filename(g_get_user_config_dir(), "kwinoutputconfig.json", NULL);
+    gboolean exists = g_file_test(kwin, G_FILE_TEST_EXISTS);
+    g_free(kwin);
+    return exists;
 }
 
 typedef struct {
@@ -77,6 +82,7 @@ int parse_kwin_auto_brightness_json(const char *json, gsize len)
     int depth = 0;
     gboolean saw_root_token = FALSE;
     gboolean found_internal = FALSE;
+    gboolean found_has_auto_br = FALSE;
     gboolean internal_enabled = FALSE;
 
     while (*p) {
@@ -100,7 +106,10 @@ int parse_kwin_auto_brightness_json(const char *json, gsize len)
             depth--;
             if (depth < MAX_JSON_DEPTH && stack[depth].is_internal_connector) {
                 found_internal = TRUE;
-                internal_enabled = stack[depth].has_auto_br ? stack[depth].auto_br_val : FALSE;
+                if (stack[depth].has_auto_br) {
+                    found_has_auto_br = TRUE;
+                    internal_enabled = stack[depth].auto_br_val;
+                }
             }
             p++;
             continue;
@@ -165,10 +174,13 @@ int parse_kwin_auto_brightness_json(const char *json, gsize len)
     if (!saw_root_token || depth != 0)
         return -1;
 
-    if (found_internal)
-        return internal_enabled ? 1 : 0;
+    if (found_internal) {
+        if (found_has_auto_br)
+            return internal_enabled ? 1 : 0;
+        return -1;
+    }
 
-    return 1;
+    return -1;
 }
 
 int parse_config_file(const gchar *path, int *out_enabled, double *out_min_brightness)
@@ -232,10 +244,14 @@ static int evaluate_auto_brightness_enabled(ConfigManager *cfg)
     int user_enabled = -2;
     parse_config_file(cfg->sys_config_path, &user_enabled, NULL);
     parse_config_file(cfg->user_config_path, &user_enabled, NULL);
-    if (user_enabled == 0 || user_enabled == 1)
-        return user_enabled;
 
-    if (cfg->is_kde_session && cfg->kwin_config_path) {
+    /* 1. Explicit hard kill-switch in config file overrides everything */
+    if (user_enabled == 0)
+        return 0;
+
+    /* 2. In a KDE session (or if kwinoutputconfig.json exists), respect the internal
+     * display's automaticBrightness toggle configured in KDE System Settings */
+    if (cfg->kwin_config_path && g_file_test(cfg->kwin_config_path, G_FILE_TEST_EXISTS)) {
         gchar *contents = NULL;
         gsize len = 0;
         GError *error = NULL;
@@ -250,14 +266,21 @@ static int evaluate_auto_brightness_enabled(ConfigManager *cfg)
         } else {
             int res = parse_kwin_auto_brightness_json(contents, len);
             g_free(contents);
-            return res;
+            if (res >= 0)
+                return res;
         }
     }
 
+    /* 3. In GNOME / Cinnamon sessions with ambient-enabled GSettings */
     if (cfg->de_power_settings) {
         return g_settings_get_boolean(cfg->de_power_settings, "ambient-enabled") ? 1 : 0;
     }
 
+    /* 4. Fallback: if user explicitly configured enabled=true in config file */
+    if (user_enabled == 1)
+        return 1;
+
+    /* 5. Default fallback: enabled */
     return 1;
 }
 
@@ -282,6 +305,9 @@ static gboolean on_config_reload_timeout(gpointer user_data)
     ConfigManager *cfg = (ConfigManager *)user_data;
     cfg->reload_timer_id = 0;
 
+    double old_min = cfg->min_brightness_pct;
+    gboolean old_enabled = cfg->auto_brightness_enabled;
+
     reload_min_brightness_setting(cfg);
 
     int state = evaluate_auto_brightness_enabled(cfg);
@@ -291,9 +317,11 @@ static gboolean on_config_reload_timeout(gpointer user_data)
     }
 
     gboolean new_enabled = (state == 1);
+    gboolean changed = (new_enabled != old_enabled) ||
+                       (fabs(cfg->min_brightness_pct - old_min) > 0.01);
     cfg->auto_brightness_enabled = new_enabled;
 
-    if (cfg->on_changed) {
+    if (changed && cfg->on_changed) {
         cfg->on_changed(new_enabled, cfg->min_brightness_pct, cfg->user_data);
     }
 
