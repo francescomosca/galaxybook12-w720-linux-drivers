@@ -15,7 +15,7 @@ Raccolta organizzata e modulare di driver kernel, patch e utilità per abilitare
 | :--- | :---: | :--- | :--- | :--- |
 | **Fotocamere (Doppia)** | ✅ | Moduli Kernel (`imx258`, `imx241`, `ipu-bridge`, `cio2`, `int3472`) | Tutte (Kernel 6.x / 7.x) | Posteriore (13MP Sony IMX258) + Frontale (5MP Sony IMX241) via IPU3 e PipeWire |
 | **Luminosità OLED** | ✅ | Demone User-space (bus diretto DP-AUX) | Tutte (KDE, GNOME, XFCE) | Controllo hardware reale senza sfarfallio dello schermo |
-| **Profili Colore AMOLED** | ✅ | Script User-space + GUI (`kdialog` / `zenity`) | Tutte | Profili Adobe RGB, DCI-P3, sRGB, Adattivo |
+| **Profili Colore AMOLED** | ✅ | Selettore TUI da terminale e CLI (`galaxybook-colorprofile`) | Tutte (Zero dipendenze) | Profili Adobe RGB, DCI-P3, sRGB, Adattivo |
 | **Audio (ALC298)** | ✅ | Inizializzatore C nativo + hook systemd sleep | Tutte | Risolve gli altoparlanti muti all'avvio e dopo la sospensione (sleep/resume) |
 | **Accelerometro** | ✅ | Modulo Kernel (`st_accel_samsung`) + `hwdb` | Tutte (con systemd) | Auto-rotazione 1:1 allineata al display OLED (Wayland / X11) |
 | **Sensore Luce Ambientale** | ✅ | Modulo Kernel (`bh1730_samsung`) via IIO + demone user-space | Tutte (Kernel 6.x / 7.x, KDE, GNOME, XFCE, Sway, Hyprland, ecc.) | Interfaccia nativa `in_illuminance_input` per `iio-sensor-proxy`; demone di auto-luminosità multi-DE con fading fluido |
@@ -34,12 +34,12 @@ sudo pacman -S base-devel linux-headers dkms libcamera iio-sensor-proxy
 ### Ubuntu / Debian / Linux Mint
 ```bash
 sudo apt update
-sudo apt install build-essential linux-headers-$(uname -r) dkms libcamera-tools iio-sensor-proxy zenity libudev-dev
+sudo apt install build-essential linux-headers-$(uname -r) dkms libcamera-tools iio-sensor-proxy libudev-dev
 ```
 
 ### Fedora
 ```bash
-sudo dnf install make gcc kernel-devel kernel-headers dkms libcamera-tools iio-sensor-proxy zenity systemd-devel
+sudo dnf install make gcc kernel-devel kernel-headers dkms libcamera-tools iio-sensor-proxy systemd-devel
 ```
 
 ---
@@ -86,7 +86,7 @@ cd cameras
 ### 2. 💡 [screen/](screen/)
 Controlla la luminosità dello schermo AMOLED Samsung tramite canale DisplayPort AUX (`/dev/drm_dp_aux*`) e gestisce il cambio profili colore.
 - Demone C ad alte prestazioni (`galaxybook-brightness`).
-- Selettore grafico profili colore AMOLED (`galaxybook-colorprofile`) compatibile KDE e GNOME/GTK.
+- Selettore interattivo TUI da terminale e CLI a zero dipendenze (`galaxybook-colorprofile`).
 - Servizio systemd persistente.
 ```bash
 cd screen

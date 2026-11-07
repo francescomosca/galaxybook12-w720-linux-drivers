@@ -3,52 +3,145 @@ set -e
 
 CONFIG_FILE="/etc/galaxybook-colorprofile.conf"
 [ -f "$CONFIG_FILE" ] || echo "3" > "$CONFIG_FILE" 2>/dev/null || true
-CURRENT_PROFILE=$(cat "$CONFIG_FILE" 2>/dev/null || echo "3")
+CURRENT_PROFILE=$(tr -d ' \r\n' < "$CONFIG_FILE" 2>/dev/null || echo "3")
 
-# If profile passed as command line argument
-if [ -n "$1" ]; then
-    CHOSEN="$1"
-elif command -v kdialog >/dev/null 2>&1; then
-    # Native KDE dialog (kdialog)
-    CHOSEN=$(kdialog --title "AMOLED Screen Color Profile" \
-                     --radiolist "Select AMOLED panel color profile:" \
-                     "0" "Basic (Standard / Natural)" $([ "$CURRENT_PROFILE" = "0" ] && echo "on" || echo "off") \
-                     "1" "AMOLED Cinema (High contrast for movies)" $([ "$CURRENT_PROFILE" = "1" ] && echo "on" || echo "off") \
-                     "2" "AMOLED Photo (Calibrated for photography)" $([ "$CURRENT_PROFILE" = "2" ] && echo "on" || echo "off") \
-                     "3" "Adaptive (Samsung Default)" $([ "$CURRENT_PROFILE" = "3" ] && echo "on" || echo "off") \
-                     "4" "Advanced 4 (Custom)" $([ "$CURRENT_PROFILE" = "4" ] && echo "on" || echo "off") \
-                     "5" "Advanced 5 (Custom)" $([ "$CURRENT_PROFILE" = "5" ] && echo "on" || echo "off") \
-                     "6" "Advanced 6 (Custom)" $([ "$CURRENT_PROFILE" = "6" ] && echo "on" || echo "off"))
-elif command -v zenity >/dev/null 2>&1; then
-    # GTK / GNOME fallback dialog (zenity)
-    CHOSEN=$(zenity --list --radiolist \
-                    --title="AMOLED Screen Color Profile" \
-                    --text="Select AMOLED panel color profile:" \
-                    --column="" --column="ID" --column="Profile" \
-                    $([ "$CURRENT_PROFILE" = "0" ] && echo "TRUE" || echo "FALSE") "0" "Basic (Standard / Natural)" \
-                    $([ "$CURRENT_PROFILE" = "1" ] && echo "TRUE" || echo "FALSE") "1" "AMOLED Cinema" \
-                    $([ "$CURRENT_PROFILE" = "2" ] && echo "TRUE" || echo "FALSE") "2" "AMOLED Photo" \
-                    $([ "$CURRENT_PROFILE" = "3" ] && echo "TRUE" || echo "FALSE") "3" "Adaptive (Samsung Default)" \
-                    $([ "$CURRENT_PROFILE" = "4" ] && echo "TRUE" || echo "FALSE") "4" "Advanced 4" \
-                    $([ "$CURRENT_PROFILE" = "5" ] && echo "TRUE" || echo "FALSE") "5" "Advanced 5" \
-                    $([ "$CURRENT_PROFILE" = "6" ] && echo "TRUE" || echo "FALSE") "6" "Advanced 6" \
-                    --hide-column=2 --print-column=2 2>/dev/null)
-else
-    echo "No GUI dialog found (neither kdialog nor zenity is installed)."
-    echo "CLI usage: galaxybook-colorprofile <0-6>"
-    exit 1
+PROFILES=(
+    "0:Basic (Standard / Natural - sRGB)"
+    "1:AMOLED Cinema (DCI-P3 - High Contrast)"
+    "2:AMOLED Photo (Adobe RGB - Photography)"
+    "3:Adaptive (Samsung Default - Vibrant)"
+    "4:Advanced 4 (Custom curve)"
+    "5:Advanced 5 (Custom curve)"
+    "6:Advanced 6 (Custom curve)"
+)
+
+apply_profile() {
+    local id="$1"
+    if ! [[ "$id" =~ ^[0-6]$ ]]; then
+        echo "Error: Invalid profile '$id'. Allowed values: 0-6." >&2
+        exit 1
+    fi
+
+    echo "$id" > "$CONFIG_FILE" 2>/dev/null || echo "$id" | sudo tee "$CONFIG_FILE" >/dev/null
+    sudo systemctl restart galaxybook-brightness.service
+
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send "Samsung Galaxy Book 12" "AMOLED Profile set to: $id" 2>/dev/null || true
+    fi
+}
+
+# Internal flag when spawned inside an auto-launched terminal
+if [ "$1" = "--tui" ]; then
+    shift
+    IS_TUI_CHILD=1
 fi
 
-if [ -z "$CHOSEN" ]; then
+# CLI Help
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    echo "Usage: galaxybook-colorprofile [0-6]"
+    echo ""
+    echo "Supported profiles:"
+    for item in "${PROFILES[@]}"; do
+        echo "  ${item%%:*} - ${item#*:}"
+    done
+    echo ""
+    echo "Options:"
+    echo "  -c, --current    Show currently active profile"
+    echo "  -h, --help       Show this help message"
+    echo ""
+    echo "When run without arguments, opens the interactive terminal selector (TUI)."
     exit 0
 fi
 
-echo "$CHOSEN" > "$CONFIG_FILE"
-sudo systemctl restart galaxybook-brightness.service
-
-# Desktop notification (kdialog or notify-send)
-if command -v kdialog >/dev/null 2>&1; then
-    kdialog --passivepopup "AMOLED profile set to: $CHOSEN" 3
-elif command -v notify-send >/dev/null 2>&1; then
-    notify-send "Samsung Galaxy Book 12" "AMOLED profile set to: $CHOSEN"
+# Print current active profile
+if [ "$1" = "-c" ] || [ "$1" = "--current" ]; then
+    echo "$CURRENT_PROFILE"
+    exit 0
 fi
+
+# Direct CLI argument
+if [ -n "$1" ]; then
+    apply_profile "$1"
+    echo "AMOLED profile set to: $1"
+    exit 0
+fi
+
+# If launched from GUI/desktop without an active terminal, spawn our own terminal emulator
+if [ -z "$IS_TUI_CHILD" ] && { [ ! -t 0 ] || [ ! -t 1 ]; }; then
+    SELF="$(command -v galaxybook-colorprofile 2>/dev/null || realpath "${BASH_SOURCE[0]}")"
+
+    if command -v konsole >/dev/null 2>&1; then
+        exec konsole --title "AMOLED Color Profile" -e "$SELF" --tui
+    elif command -v gnome-terminal >/dev/null 2>&1; then
+        exec gnome-terminal --title="AMOLED Color Profile" -- "$SELF" --tui
+    elif command -v xfce4-terminal >/dev/null 2>&1; then
+        exec xfce4-terminal --title="AMOLED Color Profile" -e "$SELF --tui"
+    elif command -v mate-terminal >/dev/null 2>&1; then
+        exec mate-terminal --title="AMOLED Color Profile" -e "$SELF --tui"
+    elif command -v alacritty >/dev/null 2>&1; then
+        exec alacritty --title "AMOLED Color Profile" -e "$SELF" --tui
+    elif command -v kitty >/dev/null 2>&1; then
+        exec kitty --title "AMOLED Color Profile" "$SELF" --tui
+    elif command -v foot >/dev/null 2>&1; then
+        exec foot -T "AMOLED Color Profile" "$SELF" --tui
+    elif command -v wezterm >/dev/null 2>&1; then
+        exec wezterm start -- "$SELF" --tui
+    elif command -v tabby >/dev/null 2>&1; then
+        exec tabby run "$SELF" --tui
+    elif command -v x-terminal-emulator >/dev/null 2>&1; then
+        exec x-terminal-emulator -e "$SELF" --tui
+    elif command -v xterm >/dev/null 2>&1; then
+        exec xterm -title "AMOLED Color Profile" -e "$SELF" --tui
+    elif command -v xdg-terminal-exec >/dev/null 2>&1; then
+        exec xdg-terminal-exec "$SELF" --tui
+    elif command -v exo-open >/dev/null 2>&1; then
+        exec exo-open --launch TerminalEmulator "$SELF" --tui
+    else
+        if command -v notify-send >/dev/null 2>&1; then
+            notify-send -u critical "AMOLED Color Profile" "No terminal emulator found to launch the profile selector."
+        fi
+        echo "Error: No terminal emulator found." >&2
+        exit 1
+    fi
+fi
+
+# Interactive Terminal UI (TUI)
+[ -t 1 ] && clear 2>/dev/null || true
+
+echo -e "\033[1;36m========================================================\033[0m"
+echo -e "\033[1;36m       Samsung Galaxy Book 12 - AMOLED Color Profiles   \033[0m"
+echo -e "\033[1;36m========================================================\033[0m"
+echo ""
+
+for item in "${PROFILES[@]}"; do
+    id="${item%%:*}"
+    desc="${item#*:}"
+    if [ "$id" = "$CURRENT_PROFILE" ]; then
+        echo -e "  \033[1;32m[*] [$id] $desc  (ACTIVE)\033[0m"
+    else
+        echo -e "  \033[0;37m[ ] [$id] $desc\033[0m"
+    fi
+done
+
+echo ""
+echo -e "\033[1;33mPress [0-6] to select, or [q] to quit:\033[0m "
+
+# Read single character without requiring Enter
+read -r -n 1 -s key
+
+case "$key" in
+    [0-6])
+        echo ""
+        apply_profile "$key"
+        echo -e "\n\033[1;32m✔ AMOLED profile successfully set to: $key\033[0m"
+        sleep 0.8
+        ;;
+    q|Q|$'\e')
+        echo -e "\nCancelled."
+        exit 0
+        ;;
+    *)
+        echo -e "\nInvalid choice: '$key'."
+        exit 1
+        ;;
+esac

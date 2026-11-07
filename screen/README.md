@@ -8,7 +8,7 @@ Native hardware control for the Samsung Galaxy Book 12 (SM-W720) AMOLED panel vi
 
 - **`src/`**: C source code of the brightness daemon (`brightness.c`, `dpAux.c`, `tables.c`, `main.c`, `Makefile`).
 - **`galaxybook-brightness-wrapper.sh`**: Startup wrapper applying the saved color profile before launching the daemon.
-- **`galaxybook-colorprofile`**: Script / GUI dialog (`kdialog` on KDE or `zenity` on GNOME/GTK, plus CLI fallback) to switch AMOLED color profiles.
+- **`galaxybook-colorprofile`**: Script / selettore interattivo TUI da terminale (e supporto CLI diretto) a zero dipendenze per cambiare al volo i profili AMOLED.
 - **`configs/`**:
   - `galaxybook-brightness.service`: Systemd background service.
   - `galaxybook-brightness-sudoers`: Sudoers rule allowing smooth daemon restart without password prompt when changing profiles.

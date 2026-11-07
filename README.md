@@ -15,7 +15,7 @@ Modular collection of kernel drivers, patches, and user-space utilities to enabl
 | :--- | :---: | :--- | :--- | :--- |
 | **Cameras (Dual)** | ✅ | Kernel Modules (`imx258`, `imx241`, `ipu-bridge`, `cio2`, `int3472`) | All (Kernel 6.x / 7.x) | Rear (13MP Sony IMX258) + Front (5MP Sony IMX241) via IPU3 & PipeWire |
 | **OLED Brightness** | ✅ | User-space daemon (DP-AUX direct bus) | All (KDE, GNOME, XFCE) | True hardware backlight control without screen flickering |
-| **AMOLED Color Profiles** | ✅ | User-space script + GUI (`kdialog` / `zenity`) | All | Adobe RGB, DCI-P3, sRGB, Adaptive profiles |
+| **AMOLED Color Profiles** | ✅ | Terminal UI (TUI) & CLI (`galaxybook-colorprofile`) | All (Zero dependencies) | Adobe RGB, DCI-P3, sRGB, Adaptive profiles |
 | **Audio (ALC298)** | ✅ | User-space C init + systemd sleep hook | All | Resolves silent internal speakers at boot and after sleep/resume |
 | **Accelerometer** | ✅ | Kernel module (`st_accel_samsung`) + `hwdb` | All (systemd-based) | Auto-rotation 1:1 match with OLED orientation (Wayland / X11) |
 | **Ambient Light Sensor** | ✅ | Kernel module (`bh1730_samsung`) via IIO + user-space daemon | All (Kernel 6.x / 7.x, KDE, GNOME, XFCE, Sway, Hyprland, etc.) | Native `in_illuminance_input` for `iio-sensor-proxy`; multi-DE smooth auto-brightness daemon |
@@ -34,12 +34,12 @@ sudo pacman -S base-devel linux-headers dkms libcamera iio-sensor-proxy
 ### Ubuntu / Debian / Linux Mint
 ```bash
 sudo apt update
-sudo apt install build-essential linux-headers-$(uname -r) dkms libcamera-tools iio-sensor-proxy zenity libudev-dev
+sudo apt install build-essential linux-headers-$(uname -r) dkms libcamera-tools iio-sensor-proxy libudev-dev
 ```
 
 ### Fedora
 ```bash
-sudo dnf install make gcc kernel-devel kernel-headers dkms libcamera-tools iio-sensor-proxy zenity systemd-devel
+sudo dnf install make gcc kernel-devel kernel-headers dkms libcamera-tools iio-sensor-proxy systemd-devel
 ```
 
 ---
@@ -86,7 +86,7 @@ cd cameras
 ### 2. 💡 [screen/](screen/)
 Controls the Samsung AMOLED display brightness via DisplayPort AUX channel (`/dev/drm_dp_aux*`) and provides profile switching.
 - High-efficiency C background daemon (`galaxybook-brightness`).
-- Color profile switcher GUI (`galaxybook-colorprofile`) with KDE and GNOME/GTK support.
+- Zero-dependency interactive TUI & CLI color profile switcher (`galaxybook-colorprofile`).
 - Systemd service for persistence.
 ```bash
 cd screen
