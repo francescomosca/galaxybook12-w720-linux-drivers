@@ -158,7 +158,7 @@ static const char * const ipu_vcm_types[] = {
 	"ad5816",
 	"dw9719",
 	"dw9718",
-	"dw9806b",
+	"dw9807",
 	"wv517s",
 	"lc898122xa",
 	"lc898212axb",
@@ -711,6 +711,9 @@ int ipu_bridge_instantiate_vcm(struct device *sensor)
 	/* Strip "-<link>" postfix */
 	sep = strchrnul(data->board_info.type, '-');
 	*sep = 0;
+	if (!strcmp(data->board_info.type, "dw9806b"))
+		strscpy(data->board_info.type, "dw9807",
+			sizeof(data->board_info.type));
 
 	queue_work(system_long_wq, &data->work);
 

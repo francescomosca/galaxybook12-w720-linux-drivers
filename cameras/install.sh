@@ -19,6 +19,7 @@ if command -v dkms >/dev/null 2>&1; then
     sudo mkdir -p "/usr/src/${MODULE_NAME}-${MODULE_VER}"
     sudo cp -r "${SCRIPT_DIR}/imx258-mod" "/usr/src/${MODULE_NAME}-${MODULE_VER}/"
     sudo cp -r "${SCRIPT_DIR}/imx241-mod" "/usr/src/${MODULE_NAME}-${MODULE_VER}/"
+    sudo cp -r "${SCRIPT_DIR}/dw9807-mod" "/usr/src/${MODULE_NAME}-${MODULE_VER}/"
     sudo cp -r "${SCRIPT_DIR}/int3472-mod" "/usr/src/${MODULE_NAME}-${MODULE_VER}/"
     sudo cp -r "${SCRIPT_DIR}/bridge-mod" "/usr/src/${MODULE_NAME}-${MODULE_VER}/"
     sudo cp -r "${SCRIPT_DIR}/cio2-mod" "/usr/src/${MODULE_NAME}-${MODULE_VER}/"
@@ -41,6 +42,8 @@ else
     make $CLANG_FLAGS -C "${SCRIPT_DIR}/imx258-mod"
     make $CLANG_FLAGS -C "${SCRIPT_DIR}/imx241-mod" clean
     make $CLANG_FLAGS -C "${SCRIPT_DIR}/imx241-mod"
+    make $CLANG_FLAGS -C "${SCRIPT_DIR}/dw9807-mod" clean
+    make $CLANG_FLAGS -C "${SCRIPT_DIR}/dw9807-mod"
     make $CLANG_FLAGS -C "${SCRIPT_DIR}/int3472-mod" clean
     make $CLANG_FLAGS -C "${SCRIPT_DIR}/int3472-mod"
     make $CLANG_FLAGS -C "${SCRIPT_DIR}/bridge-mod" clean
@@ -51,6 +54,7 @@ else
     sudo mkdir -p "${DEST}"
     sudo cp "${SCRIPT_DIR}/imx258-mod/imx258.ko" "${DEST}/"
     sudo cp "${SCRIPT_DIR}/imx241-mod/imx241.ko" "${DEST}/"
+    sudo cp "${SCRIPT_DIR}/dw9807-mod/dw9807-vcm.ko" "${DEST}/"
     sudo cp "${SCRIPT_DIR}/int3472-mod/intel_skl_int3472_common.ko" "${DEST}/"
     sudo cp "${SCRIPT_DIR}/int3472-mod/intel_skl_int3472_discrete.ko" "${DEST}/"
     sudo cp "${SCRIPT_DIR}/bridge-mod/ipu-bridge.ko" "${DEST}/"
@@ -69,11 +73,32 @@ sudo cp "${SCRIPT_DIR}/configs/blacklist-watchdog.conf" /etc/modprobe.d/blacklis
 sudo cp "${SCRIPT_DIR}/configs/firefox-pipewire-policy.json" /etc/firefox/policies/policies.json
 
 echo "=== [4/4] Loading camera modules ==="
-sudo modprobe intel_skl_int3472_discrete 2>/dev/null || true
-sudo modprobe ipu-bridge 2>/dev/null || true
-sudo modprobe ipu3-cio2 2>/dev/null || true
-sudo modprobe imx258 2>/dev/null || true
-sudo modprobe imx241 2>/dev/null || true
+# Terminate wireplumber temporarily so it releases /dev/video* and /dev/media* file descriptors
+killall -9 wireplumber 2>/dev/null || true
+sleep 1
+
+# Unbind devices if currently bound
+echo "0000:00:14.3" > /sys/bus/pci/drivers/ipu3-cio2/unbind 2>/dev/null || true
+echo "i2c-INT347F:00" > /sys/bus/i2c/drivers/imx241/unbind 2>/dev/null || true
+echo "i2c-SONY258A:00" > /sys/bus/i2c/drivers/imx258/unbind 2>/dev/null || true
+echo "i2c-SONY258A:00-VCM" > /sys/bus/i2c/drivers/dw9807/unbind 2>/dev/null || true
+
+# Unload any old in-memory modules
+modprobe -r imx241 imx258 dw9807_vcm dw9807-vcm ipu3_cio2 ipu_bridge 2>/dev/null || true
+
+# Load the new modules (DKMS installed)
+modprobe intel_skl_int3472_discrete 2>/dev/null || true
+modprobe ipu-bridge 2>/dev/null || true
+modprobe dw9807-vcm 2>/dev/null || true
+modprobe ipu3-cio2 2>/dev/null || true
+modprobe imx258 2>/dev/null || true
+modprobe imx241 2>/dev/null || true
+
+# Ensure all hardware devices are bound to their drivers
+echo "0000:00:14.3" > /sys/bus/pci/drivers/ipu3-cio2/bind 2>/dev/null || true
+echo "i2c-INT347F:00" > /sys/bus/i2c/drivers/imx241/bind 2>/dev/null || true
+echo "i2c-SONY258A:00" > /sys/bus/i2c/drivers/imx258/bind 2>/dev/null || true
+echo "i2c-SONY258A:00-VCM" > /sys/bus/i2c/drivers/dw9807/bind 2>/dev/null || true
 
 echo ""
 echo "=========================================================="

@@ -9,6 +9,7 @@
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
+#include <media/v4l2-async.h>
 #include <media/v4l2-cci.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
@@ -1612,18 +1613,21 @@ static int imx258_probe(struct i2c_client *client)
 	if (ret)
 		goto error_handler_free;
 
-	ret = v4l2_async_register_subdev(&imx258->sd);
-	if (ret < 0)
-		goto error_media_entity;
-
 	pm_runtime_set_active(&client->dev);
 	pm_runtime_enable(&client->dev);
+
+	ret = v4l2_async_register_subdev_sensor(&imx258->sd);
+	if (ret < 0)
+		goto error_pm_runtime;
+
 	pm_runtime_idle(&client->dev);
 	v4l2_fwnode_endpoint_free(&ep);
 
 	return 0;
 
-error_media_entity:
+error_pm_runtime:
+	pm_runtime_disable(&client->dev);
+	pm_runtime_set_suspended(&client->dev);
 	media_entity_cleanup(&imx258->sd.entity);
 
 error_handler_free:

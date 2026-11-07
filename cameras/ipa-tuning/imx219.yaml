@@ -6,5 +6,6 @@ algorithms:
   - Af:
   - Agc:
   - Awb:
+  - BlackLevelCorrection:
   - ToneMapping:
 ...

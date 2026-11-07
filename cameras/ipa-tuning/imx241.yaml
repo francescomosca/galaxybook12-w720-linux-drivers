@@ -3,8 +3,22 @@
 ---
 version: 1
 algorithms:
-  - Af:
   - Agc:
+      relativeLuminanceTarget: 0.14
+      ExposureModes:
+        ExposureNormal:
+          - [0, 1.0]
+          - [33333, 1.0]
+          - [66666, 1.0]
+          - [66666, 4.0]
+      ConstraintModes:
+        ConstraintNormal:
+          - [0.0, 1.0]
+          - [1.0, 1.0]
+        ConstraintHighlight:
+          - [0.0, 0.5]
+          - [1.0, 0.5]
   - Awb:
+  - BlackLevelCorrection:
   - ToneMapping:
 ...

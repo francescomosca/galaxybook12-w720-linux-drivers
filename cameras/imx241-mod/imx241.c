@@ -32,14 +32,17 @@
 /* Timings */
 #define IMX241_VTS_DEFAULT		2280
 #define IMX241_VTS_MAX			65535
-#define IMX241_HTS_DEFAULT		1456
+#define IMX241_REG_HTS_DEFAULT		1456
+#define IMX241_PPL_DEFAULT		2912
+#define IMX241_PIXEL_RATE		199180800ULL
 
 /* Exposure control */
 #define IMX241_REG_EXPOSURE		CCI_REG16(0x0202)
 #define IMX241_EXPOSURE_MIN		4
+#define IMX241_EXPOSURE_OFFSET		10
 #define IMX241_EXPOSURE_STEP		1
 #define IMX241_EXPOSURE_DEFAULT		0x0320
-#define IMX241_EXPOSURE_MAX		(IMX241_VTS_MAX - 10)
+#define IMX241_EXPOSURE_MAX		(IMX241_VTS_DEFAULT - IMX241_EXPOSURE_OFFSET)
 
 /* Analog gain control (16-bit) */
 #define IMX241_REG_ANALOG_GAIN		CCI_REG16(0x0204)
@@ -74,7 +77,8 @@ struct imx241_mode {
 	u32 width;
 	u32 height;
 	u32 vts;
-	u32 hts;
+	u32 hts_reg;
+	u32 ppl;
 	struct v4l2_rect crop;
 };
 
@@ -82,20 +86,9 @@ static const struct imx241_mode supported_modes[] = {
 	{
 		.width = 2592,
 		.height = 1944,
-		.vts = 2280,
-		.hts = 1456,
-		.crop = {
-			.left = 0,
-			.top = 0,
-			.width = 2592,
-			.height = 1944,
-		},
-	},
-	{
-		.width = 1296,
-		.height = 972,
-		.vts = 1140,
-		.hts = 1456,
+		.vts = IMX241_VTS_DEFAULT,
+		.hts_reg = IMX241_REG_HTS_DEFAULT,
+		.ppl = IMX241_PPL_DEFAULT,
 		.crop = {
 			.left = 0,
 			.top = 0,
@@ -175,11 +168,29 @@ static int imx241_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 	return 0;
 }
 
+static void imx241_adjust_exposure_range(struct imx241 *imx241)
+{
+	int exposure_max, exposure_def;
+
+	if (!imx241->exposure)
+		return;
+
+	exposure_max = imx241->cur_mode->height + imx241->vblank->val -
+		       IMX241_EXPOSURE_OFFSET;
+	exposure_def = min(exposure_max, imx241->exposure->val);
+	__v4l2_ctrl_modify_range(imx241->exposure, imx241->exposure->minimum,
+				 exposure_max, imx241->exposure->step,
+				 exposure_def);
+}
+
 static int imx241_set_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct imx241 *imx241 = container_of(ctrl->handler,
 					     struct imx241, ctrl_handler);
 	int ret = 0;
+
+	if (ctrl->id == V4L2_CID_VBLANK)
+		imx241_adjust_exposure_range(imx241);
 
 	if (!pm_runtime_get_if_in_use(imx241->sd.dev))
 		return 0;
@@ -283,12 +294,11 @@ static int imx241_set_pad_format(struct v4l2_subdev *sd,
 {
 	struct imx241 *imx241 = to_imx241(sd);
 	const struct imx241_mode *mode;
+	s64 vblank_def, hblank;
 
 	mutex_lock(&imx241->mutex);
 
 	mode = &supported_modes[0];
-	if (fmt->format.width <= 1296 && fmt->format.height <= 972)
-		mode = &supported_modes[1];
 
 	imx241_update_pad_format(imx241, mode, fmt);
 
@@ -296,8 +306,15 @@ static int imx241_set_pad_format(struct v4l2_subdev *sd,
 		*v4l2_subdev_state_get_format(sd_state, fmt->pad) = fmt->format;
 	} else {
 		imx241->cur_mode = mode;
-		__v4l2_ctrl_s_ctrl(imx241->vblank, mode->vts - mode->height);
-		__v4l2_ctrl_s_ctrl(imx241->hblank, mode->hts - mode->width);
+		vblank_def = mode->vts - mode->height;
+		__v4l2_ctrl_modify_range(imx241->vblank, 10,
+					 IMX241_VTS_MAX - mode->height, 1,
+					 vblank_def);
+		__v4l2_ctrl_s_ctrl(imx241->vblank, vblank_def);
+
+		hblank = mode->ppl - mode->width;
+		__v4l2_ctrl_modify_range(imx241->hblank, hblank, hblank, 1,
+					 hblank);
 	}
 
 	mutex_unlock(&imx241->mutex);
@@ -338,7 +355,7 @@ static int imx241_start_streaming(struct imx241 *imx241)
 	ret = cci_write(imx241->regmap, CCI_REG16(0x034c), imx241->cur_mode->width, NULL);
 	ret |= cci_write(imx241->regmap, CCI_REG16(0x034e), imx241->cur_mode->height, NULL);
 	ret |= cci_write(imx241->regmap, CCI_REG16(0x0340), imx241->cur_mode->vts, NULL);
-	ret |= cci_write(imx241->regmap, CCI_REG16(0x0342), imx241->cur_mode->hts, NULL);
+	ret |= cci_write(imx241->regmap, CCI_REG16(0x0342), imx241->cur_mode->hts_reg, NULL);
 
 	/* Apply controls */
 	ret |= __v4l2_ctrl_handler_setup(&imx241->ctrl_handler);
@@ -506,9 +523,11 @@ static const struct v4l2_subdev_internal_ops imx241_internal_ops = {
 static int imx241_init_controls(struct imx241 *imx241)
 {
 	struct v4l2_ctrl_handler *ctrl_hdlr = &imx241->ctrl_handler;
+	struct v4l2_fwnode_device_properties props = {};
+	s64 hblank_def;
 	int ret;
 
-	ret = v4l2_ctrl_handler_init(ctrl_hdlr, 10);
+	ret = v4l2_ctrl_handler_init(ctrl_hdlr, 12);
 	if (ret)
 		return ret;
 
@@ -519,25 +538,27 @@ static int imx241_init_controls(struct imx241 *imx241)
 						  &imx241_ctrl_ops,
 						  V4L2_CID_LINK_FREQ,
 						  ARRAY_SIZE(link_freq_menu_items) - 1,
-						  0, link_freq_menu_items);
+						  1, link_freq_menu_items);
 	if (imx241->link_freq)
 		imx241->link_freq->flags |= V4L2_CTRL_FLAG_READ_ONLY;
 
-	/* 99590400 pixels/sec */
+	/* 199180800 pixels/sec (2912 * 2280 * 30 fps) */
 	imx241->pixel_rate = v4l2_ctrl_new_std(ctrl_hdlr, &imx241_ctrl_ops,
-					       V4L2_CID_PIXEL_RATE, 0,
-					       99590400, 1, 99590400);
+					       V4L2_CID_PIXEL_RATE,
+					       IMX241_PIXEL_RATE,
+					       IMX241_PIXEL_RATE, 1,
+					       IMX241_PIXEL_RATE);
 
 	imx241->vblank = v4l2_ctrl_new_std(ctrl_hdlr, &imx241_ctrl_ops,
 					   V4L2_CID_VBLANK, 10,
-					   IMX241_VTS_MAX - 1944, 1,
-					   IMX241_VTS_DEFAULT - 1944);
+					   IMX241_VTS_MAX - imx241->cur_mode->height, 1,
+					   imx241->cur_mode->vts - imx241->cur_mode->height);
 
+	hblank_def = imx241->cur_mode->ppl - imx241->cur_mode->width;
 	imx241->hblank = v4l2_ctrl_new_std(ctrl_hdlr, &imx241_ctrl_ops,
 					   V4L2_CID_HBLANK,
-					   IMX241_HTS_DEFAULT - 2592,
-					   IMX241_HTS_DEFAULT - 2592, 1,
-					   IMX241_HTS_DEFAULT - 2592);
+					   hblank_def, hblank_def, 1,
+					   hblank_def);
 	if (imx241->hblank)
 		imx241->hblank->flags |= V4L2_CTRL_FLAG_READ_ONLY;
 
@@ -557,16 +578,32 @@ static int imx241_init_controls(struct imx241 *imx241)
 
 	imx241->hflip = v4l2_ctrl_new_std(ctrl_hdlr, &imx241_ctrl_ops,
 					  V4L2_CID_HFLIP, 0, 1, 1, 0);
+	if (imx241->hflip)
+		imx241->hflip->flags |= V4L2_CTRL_FLAG_MODIFY_LAYOUT;
+
 	imx241->vflip = v4l2_ctrl_new_std(ctrl_hdlr, &imx241_ctrl_ops,
 					  V4L2_CID_VFLIP, 0, 1, 1, 0);
+	if (imx241->vflip)
+		imx241->vflip->flags |= V4L2_CTRL_FLAG_MODIFY_LAYOUT;
 
 	imx241->test_pattern = v4l2_ctrl_new_std_menu_items(ctrl_hdlr,
 				&imx241_ctrl_ops, V4L2_CID_TEST_PATTERN,
 				ARRAY_SIZE(imx241_test_pattern_menu) - 1,
 				0, 0, imx241_test_pattern_menu);
 
-	v4l2_ctrl_new_std(ctrl_hdlr, &imx241_ctrl_ops,
-			  V4L2_CID_CAMERA_SENSOR_ROTATION, 0, 0, 1, 0);
+	ret = v4l2_fwnode_device_parse(imx241->sd.dev, &props);
+	if (ret || props.orientation == V4L2_FWNODE_PROPERTY_UNSET)
+		props.orientation = V4L2_FWNODE_ORIENTATION_FRONT;
+	if (props.rotation == V4L2_FWNODE_PROPERTY_UNSET)
+		props.rotation = 0;
+
+	ret = v4l2_ctrl_new_fwnode_properties(ctrl_hdlr, &imx241_ctrl_ops,
+					      &props);
+	if (ret) {
+		v4l2_ctrl_handler_free(ctrl_hdlr);
+		mutex_destroy(&imx241->mutex);
+		return ret;
+	}
 
 	if (ctrl_hdlr->error) {
 		ret = ctrl_hdlr->error;
@@ -650,23 +687,26 @@ static int imx241_probe(struct i2c_client *client)
 	if (ret)
 		goto err_free_ctrls;
 
+	/* Runtime PM */
+	pm_runtime_set_active(dev);
+	pm_runtime_enable(dev);
+
 	/* Register subdev */
 	ret = v4l2_async_register_subdev(&imx241->sd);
 	if (ret < 0) {
 		dev_err(dev, "Failed to register subdev: %d\n", ret);
-		goto err_clean_entity;
+		goto err_pm_runtime;
 	}
 
-	/* Runtime PM */
-	pm_runtime_set_active(dev);
-	pm_runtime_enable(dev);
 	pm_runtime_idle(dev);
 
 	dev_info(dev, "Sony IMX241 probe completed successfully\n");
 
 	return 0;
 
-err_clean_entity:
+err_pm_runtime:
+	pm_runtime_disable(dev);
+	pm_runtime_set_suspended(dev);
 	media_entity_cleanup(&imx241->sd.entity);
 err_free_ctrls:
 	v4l2_ctrl_handler_free(&imx241->ctrl_handler);
