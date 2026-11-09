@@ -28,18 +28,18 @@ Before compiling and installing, make sure your system has the standard build to
 
 ### Arch Linux / CachyOS / Manjaro
 ```bash
-sudo pacman -S base-devel linux-headers dkms libcamera iio-sensor-proxy
+sudo pacman -S base-devel linux-headers dkms libcamera iio-sensor-proxy pkgconf glib2
 ```
 
 ### Ubuntu / Debian / Linux Mint
 ```bash
 sudo apt update
-sudo apt install build-essential linux-headers-$(uname -r) dkms libcamera-tools iio-sensor-proxy libudev-dev
+sudo apt install build-essential linux-headers-$(uname -r) dkms libcamera-tools iio-sensor-proxy libudev-dev pkg-config libglib2.0-dev
 ```
 
 ### Fedora
 ```bash
-sudo dnf install make gcc kernel-devel kernel-headers dkms libcamera-tools iio-sensor-proxy systemd-devel
+sudo dnf install make gcc kernel-devel kernel-headers dkms libcamera-tools iio-sensor-proxy systemd-devel pkgconf-pkg-config glib2-devel
 ```
 
 ---

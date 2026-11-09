@@ -57,6 +57,16 @@ TARGET_USER="${SUDO_USER:-$USER}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 TARGET_UID="$(id -u "$TARGET_USER" 2>/dev/null || echo 1000)"
 
+# Check dependencies for auto-brightness daemon upfront
+if ! command -v pkg-config >/dev/null 2>&1 || ! pkg-config --exists gio-2.0 gio-unix-2.0 2>/dev/null; then
+    echo "ERROR: Missing required development libraries for auto-brightness daemon (gio-2.0, gio-unix-2.0)." >&2
+    echo "Please install build dependencies first:" >&2
+    echo "  - Ubuntu/Debian: sudo apt install pkg-config libglib2.0-dev" >&2
+    echo "  - Fedora:        sudo dnf install pkgconf-pkg-config glib2-devel" >&2
+    echo "  - Arch Linux:    sudo pacman -S pkgconf glib2" >&2
+    exit 1
+fi
+
 echo "=== [1/6] Installing light sensor kernel module (bh1730_samsung) ==="
 # Clean build artifacts first
 make -C "${SCRIPT_DIR}/src" clean >/dev/null 2>&1 || true
