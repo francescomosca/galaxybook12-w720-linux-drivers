@@ -5,10 +5,10 @@ KDIR ?= /lib/modules/$(KERNEL_VER)/build
 
 MODULE_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-# Support LLVM/Clang if specified or if LLVM is requested
-LLVM ?= $(if $(shell which clang 2>/dev/null),1,0)
-ifeq ($(LLVM),1)
-    EXTRA_FLAGS := LLVM=1
+# Auto-detect if the target kernel was built with Clang/LLVM
+KERNEL_CLANG := $(shell grep -q "^CONFIG_CC_IS_CLANG=y" $(KDIR)/.config 2>/dev/null && echo 1 || echo 0)
+ifeq ($(KERNEL_CLANG),1)
+    EXTRA_FLAGS := CC=clang LLVM=1
 else
     EXTRA_FLAGS :=
 endif
@@ -17,4 +17,4 @@ all:
 	$(MAKE) -C $(KDIR) M=$(MODULE_DIR) $(EXTRA_FLAGS) modules
 
 clean:
-	$(MAKE) -C $(KDIR) M=$(MODULE_DIR) clean
+	$(MAKE) -C $(KDIR) M=$(MODULE_DIR) clean 2>/dev/null || rm -f *.o *.ko *.mod* .*.cmd modules.order Module.symvers

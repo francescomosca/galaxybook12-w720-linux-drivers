@@ -10,6 +10,8 @@ MODULE_NAME="galaxybook-sensor"
 MODULE_VER="1.0"
 
 echo "=== [1/4] Installing accelerometer kernel module (st_accel_samsung) ==="
+make -C "${SCRIPT_DIR}/src" clean >/dev/null 2>&1 || true
+
 if command -v dkms >/dev/null 2>&1; then
     echo " -> DKMS detected: configuring accelerometer for automatic kernel rebuilds..."
     

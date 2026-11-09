@@ -4,11 +4,12 @@ obj-m += intel_skl_int3472_discrete.o
 intel_skl_int3472_common-objs := common.o
 intel_skl_int3472_discrete-objs := discrete.o clk_and_regulator.o led.o discrete_quirks.o
 
-KDIR ?= /lib/modules/$(shell uname -r)/build
+KERNEL_VER ?= $(shell uname -r)
+KDIR ?= /lib/modules/$(KERNEL_VER)/build
 PWD := $(shell pwd)
 
 default:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
 
 clean:
-	$(MAKE) -C $(KDIR) M=$(PWD) clean
+	$(MAKE) -C $(KDIR) M=$(PWD) clean 2>/dev/null || rm -f *.o *.ko *.mod* .*.cmd modules.order Module.symvers
